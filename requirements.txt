@@ -10,3 +10,4 @@ discord
 discord-handler
 python-dotenv
 pendulum
+praw
