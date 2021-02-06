@@ -27,7 +27,7 @@ scraper news
 * [x] Scrape https://www.coindesk.com
 * [x] Scrape https://cointelegraph.com
 * [ ] Scrape Reddit (r/cryptomoonshots, r/bitcoin, r/satoshistreetbets, r/cryptocurrency)
-* [ ] Scrape 4chan(archives)
+* [ ] Scrape 4chan(archives) (note 4chan has api)
 * [ ] Scrape warosu
 * [ ] Create News Dataset
 * [ ] Import Twitter Dataset

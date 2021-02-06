@@ -11,3 +11,4 @@ discord-handler
 python-dotenv
 pendulum
 praw
+python-binance

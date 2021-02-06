@@ -3,10 +3,8 @@ import logging
 import pymongo
 import requests
 from tqdm import tqdm
-from twython import Twython
 from datetime import datetime
 import re
-import os
 import click
 import pendulum
 
