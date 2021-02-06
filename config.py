@@ -3,9 +3,7 @@ import sys
 
 import pymongo
 import os
-import discord as dsc
 from dotenv import load_dotenv
-import asyncio
 from discord_handler import DiscordHandler
 
 load_dotenv()

@@ -1,0 +1,10 @@
+click
+jupyter
+pandas
+numpy
+scrapy
+twython
+tqdm
+pymongo
+discord
+discord-handler

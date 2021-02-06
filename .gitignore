@@ -155,3 +155,8 @@ cython_debug/
 .env
 venv
 /DATAFILE.md
+
+/dev/instances/*
+!/dev/instances/.gitkeep
+/data/*
+!/data/.gitkeep
