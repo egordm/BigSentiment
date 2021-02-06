@@ -1,21 +1,16 @@
 import logging
 
 import click
-import pandas as pd
-import math
 import os.path
-import time
 
 import pymongo
 from binance.client import Client
-from datetime import timedelta, datetime
-from dateutil import parser
 import pendulum
 from pymongo.errors import BulkWriteError
 
 from config import mongodb
 
-TIMESTEPS = ['5m', '15m', '4h', '1d']
+TIMESTEPS = ['5m', '15m', '1h', '4h', '1d']
 KEYS = [
     'timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av', 'trades', 'tb_base_av',
     'tb_quote_av', 'ignore'
