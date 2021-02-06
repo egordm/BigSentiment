@@ -41,7 +41,7 @@ def binance(symbols):
             last_item = next(output.find().sort("timestamp", pymongo.DESCENDING).limit(1), None)
 
             start_dt = pendulum.DateTime(year=2017, month=1, day=1) if not last_item \
-                else pendulum.from_timestamp(int(last_item['timestamp']/1000))
+                else pendulum.from_timestamp(int(last_item['timestamp']/1000)).replace(tzinfo=None)
             end_dt = pendulum.now().replace(tzinfo=None)
             period = pendulum.period(start_dt, end_dt)
             for from_dt in period.range('months'):
