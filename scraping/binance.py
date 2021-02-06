@@ -36,10 +36,6 @@ def binance(symbols):
     scrapperdb = db['market']
     group = scrapperdb['binance']
 
-    def last_date(symbol, step):
-        item = next(collection.find({'source': source}).sort("date", pymongo.DESCENDING).limit(1), None)
-        return item['date'] if item else None
-
     for symbol in symbols:
         for step in TIMESTEPS:
             output = group[symbol][step]
@@ -62,6 +58,9 @@ def binance(symbols):
                     from_dt.strftime("%d %b %Y %H:%M:%S"),
                     till_dt.strftime("%d %b %Y %H:%M:%S")
                 )
+
+                if len(klines) == 0:
+                    continue
 
                 try:
                     output.insert_many(
