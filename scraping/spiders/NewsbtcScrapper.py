@@ -1,8 +1,10 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
 import requests
 import scrapy
+from scrapy import signals
 from scrapy.http import HtmlResponse
 
 SEARCH_URL = 'https://www.newsbtc.com/'
@@ -14,6 +16,12 @@ class NewsbtcSpider(scrapy.Spider):
     query = 0
     from_date: Optional[datetime] = None
     SOURCE = 'newsbtc'
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(NewsbtcSpider, cls).from_crawler(crawler, *args, **kwargs)
+        crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
+        return spider
 
     def start_requests(self):
         for page in range(100000):
@@ -39,7 +47,7 @@ class NewsbtcSpider(scrapy.Spider):
                 url = item.css('.jeg_post_title a').attrib['href']
                 date = datetime.strptime(item.css('.jeg_meta_date a::text').get().strip(), '%B %d, %Y')
 
-                if self.from_date and self.from_date < date:
+                if self.from_date and self.from_date >= date:
                     return
 
                 yield scrapy.Request(
@@ -73,3 +81,8 @@ class NewsbtcSpider(scrapy.Spider):
             'topics': tags,
             'date': date,
         }
+
+    def spider_closed(self, spider):
+        stats = spider.crawler.stats.get_stats()
+        numcount = str(stats.get('item_scraped_count', 0))
+        logging.info(f'Finished scraping NewsBtc. Results: {numcount} Query: {self.query}')

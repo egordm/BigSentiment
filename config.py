@@ -22,14 +22,14 @@ def mongodb():
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-logging.getLogger('scrapy').propagate = True
-logging.getLogger('scrapy').setLevel(logging.DEBUG)
+logging.getLogger('scrapy').propagate = False
+logging.getLogger('scrapy').setLevel(logging.WARNING)
 
 FORMAT = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s", "%Y-%m-%d %H:%M")
 discord_handler = DiscordHandler(os.getenv('DISCORD_LOG_WEBHOOK'), 'Basement')
 stream_handler = logging.StreamHandler(sys.stdout)
 
-discord_handler.setLevel(logging.WARNING)
+discord_handler.setLevel(logging.INFO)
 stream_handler.setLevel(logging.DEBUG)
 
 discord_handler.setFormatter(FORMAT)
