@@ -9,3 +9,4 @@ pymongo
 discord
 discord-handler
 python-dotenv
+pendulum
