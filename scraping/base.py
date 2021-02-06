@@ -1,5 +1,6 @@
 import click
 
+from scraping.news import news
 from scraping.twitter import twitter
 
 
@@ -9,3 +10,4 @@ def scraper():
 
 
 scraper.add_command(twitter)
+scraper.add_command(news)

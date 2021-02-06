@@ -1,5 +1,6 @@
 import logging
 
+import pymongo
 from tqdm import tqdm
 from twython import Twython
 from datetime import datetime
@@ -28,7 +29,12 @@ def twitter(query, type, depth):
     client = mongodb()
     scrapperdb = client['scrapper']
     output = scrapperdb['tweets']
+    output.ensure_index([
+        ('created_at', pymongo.DESCENDING),
+        ('topics', pymongo.ASCENDING)
+    ])
 
+    counter = 0
     next_id = None
     for _ in tqdm(range(depth)):
         data = twitter.search(
@@ -61,5 +67,6 @@ def twitter(query, type, depth):
                 ]
             }
             output.update({'_id': id}, result, upsert=True)
+            counter += 1
 
-    logging.info(f'Finished scraping twitter. Query: {query}, Depth: {depth}')
+    logging.info(f'Finished scraping twitter. Results: {counter} Query: {query}, Depth: {depth}')
