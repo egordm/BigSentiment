@@ -18,7 +18,7 @@ KEYS = [
 
 
 @click.command()
-@click.option('--symbols', default=['BTCUSDT'], help='Symbols to fetch data for', required=True)
+@click.option('--symbols', default=['BTCUSDT'], help='Symbols to fetch data for', required=True, multiple=True)
 def binance(symbols):
     logging.info(f'Scraping binance symbols. Symbols: {symbols}, Timeframes: {TIMESTEPS}')
 
