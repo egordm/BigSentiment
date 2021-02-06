@@ -61,7 +61,7 @@ class CoindeskSpider(scrapy.Spider):
             'title': meta['title'],
             'summary': meta['text'],
             'text': text,
-            'author': meta['author'],
+            'author': meta['author'][0]['name'],
             'topics': tags,
             'date': datetime.fromisoformat(meta['date']),
         }
