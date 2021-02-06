@@ -44,6 +44,9 @@ def fetch_data(guest_token, query, cursor, since: pendulum.Date):
         'x-twitter-client-language': 'en',
     }).json()
 
+    if 'globalObjects' not in result:
+        return [], None
+
     tweets = list(result['globalObjects']['tweets'].values())
     instruction = result['timeline']['instructions'][-1]
     if instruction.get('addEntries', None):
@@ -55,7 +58,7 @@ def fetch_data(guest_token, query, cursor, since: pendulum.Date):
 
 @click.command()
 @click.option('--query', help='Query to fetch data from twitter from', required=True)
-@click.option('--depth', type=int, default=20, help='Amount of pages to visit')
+@click.option('--depth', type=int, default=10, help='Amount of pages to visit')
 def twitter_old(query, depth):
     logging.info(f'Starting Historical Twitter scraping. Query: {query}, Depth: {depth}')
 
