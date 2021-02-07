@@ -1,0 +1,4 @@
+outs:
+- md5: 281357266e31c645f07aaad2c21c11da
+  size: 825706561
+  path: bitcoin_twitter_processed.csv
