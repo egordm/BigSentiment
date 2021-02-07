@@ -38,8 +38,15 @@ kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20
 * [ ] Scrape 4chan(archives) (note 4chan has api)
 * [ ] Scrape warosu
 * [ ] Create News Dataset
-* [ ] Import Twitter Dataset
-* [ ] Create Twitter Dataset
-* [ ] Configure persistent mongodb
-* [ ] Import Binance data
-* [ ] Scrape Binance data
+* [x] Import Twitter Dataset
+* [x] Create Twitter Dataset
+* [x] Configure persistent mongodb
+* [x] Import Binance data
+* [x] Scrape Binance data
+* [ ] Devise architecture for sentiment analysis
+* [ ] Create Label generation for sentiment analysis
+* [ ] Create Batch generation for sentiment analysis
+
+## Instpiration / References
+* https://github.com/Drabble/TwitterSentimentAndCryptocurrencies
+* https://www.kaggle.com/kyakovlev/preprocessing-bert-public/data
