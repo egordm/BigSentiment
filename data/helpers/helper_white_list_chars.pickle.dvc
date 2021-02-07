@@ -1,0 +1,4 @@
+outs:
+- md5: 6e92bf4183c18a06dab4cf956041fdd8
+  size: 798
+  path: helper_white_list_chars.pickle

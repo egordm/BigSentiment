@@ -1,0 +1,4 @@
+outs:
+- md5: 1149ecfa5c641fb3a3346fdd4adc37a0
+  size: 4076
+  path: helper_contractions.pickle

@@ -1,0 +1,4 @@
+outs:
+- md5: 9fa6ff9438e94d4880361d8acc2963a0
+  size: 21844772
+  path: helper_crawl_vocabulary.pickle

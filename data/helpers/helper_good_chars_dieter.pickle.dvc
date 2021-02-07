@@ -1,0 +1,4 @@
+outs:
+- md5: bcf5f8b91c3cacf4fb9c868065d6088e
+  size: 968
+  path: helper_good_chars_dieter.pickle

@@ -1,0 +1,4 @@
+outs:
+- md5: df7ecd332d5ed1642774cbd71114d829
+  size: 24133863
+  path: helper_glove_vocabulary.pickle

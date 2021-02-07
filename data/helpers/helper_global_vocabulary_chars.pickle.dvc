@@ -1,0 +1,4 @@
+outs:
+- md5: 8fdd2712f80478ec240c395864797710
+  size: 34605
+  path: helper_global_vocabulary_chars.pickle

@@ -1,0 +1,4 @@
+outs:
+- md5: ba3b1100494d7641d0bb00ec710a6c77
+  size: 31706220
+  path: helper_global_vocabulary.pickle

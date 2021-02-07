@@ -1,0 +1,4 @@
+outs:
+- md5: 74f8175528d6e490ba413b92c259e5b3
+  size: 271550
+  path: helper_bert_cased_vocabulary.pickle

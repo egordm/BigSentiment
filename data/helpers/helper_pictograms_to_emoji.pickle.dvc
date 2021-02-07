@@ -1,0 +1,4 @@
+outs:
+- md5: 13759565540cdd4bff1b3c0ff290c9c2
+  size: 1828
+  path: helper_pictograms_to_emoji.pickle
