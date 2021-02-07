@@ -1,0 +1,4 @@
+outs:
+- md5: a07e40e2b499ee816218c5f81cec2e33
+  size: 46955820
+  path: crypto_news_raw.csv.gz
