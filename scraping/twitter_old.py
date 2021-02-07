@@ -77,13 +77,22 @@ def twitter_old(query, depth):
         if i % 20 == 0:
             guest_token = get_guest_token()
 
+        error_count = 0
         for _ in range(depth):
             old_cursor = cursor
-            tweets, cursor = fetch_data(guest_token, query, cursor, since)
+            try:
+                tweets, cursor = fetch_data(guest_token, query, cursor, since)
+            except Exception as e:
+                logging.exception(str(e))
+                if error_count > 5:
+                    break
+                error_count += 1
+                continue
 
             if len(tweets) == 0 or cursor == old_cursor:
                 break
 
+            error_count = 0
             for tweet in tweets:
                 id = tweet['id']
                 result = {

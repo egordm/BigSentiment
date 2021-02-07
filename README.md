@@ -18,6 +18,14 @@ scraper news
 # Add --help to see more args
 ```
 
+### Extras
+```shell
+kaggle datasets download --unzip -p kaggle supertaz/pretrained-bert-including-scripts
+kaggle datasets download --unzip -p kaggle takuok/glove840b300dtxt
+kaggle datasets download --unzip -p kaggle yekenot/fasttext-crawl-300d-2m
+kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20190329
+```
+
 
 
 ## TODO

@@ -159,3 +159,4 @@ venv
 /dev/instances/*
 !/dev/instances/.gitkeep
 /data
+/kaggle
