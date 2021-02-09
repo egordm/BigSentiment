@@ -53,7 +53,7 @@ def news(query_coindesk, query_telegraph, category_newsbtc):
         item = next(collection.find({'source': source}).sort("date", pymongo.DESCENDING).limit(1), None)
         return item['date'] if item else None
 
-    latest = last_date(CoindeskSpider.SOURCE)
+    latest = None #last_date(CoindeskSpider.SOURCE)
     process.crawl(
         CoindeskSpider,
         query=query_coindesk,
@@ -67,7 +67,7 @@ def news(query_coindesk, query_telegraph, category_newsbtc):
         from_date=latest if latest else longago
     )
 
-    latest = last_date(CointelegraphSpider.SOURCE)
+    latest = None # last_date(CointelegraphSpider.SOURCE)
     process.crawl(
         CointelegraphSpider,
         query=query_telegraph,
