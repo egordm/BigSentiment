@@ -35,3 +35,4 @@ scraper news
 * [ ] Configure persistent mongodb
 * [ ] Import Binance data
 * [ ] Scrape Binance data
+* [ ] Fix 429 too many requests for twitter
