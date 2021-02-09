@@ -1,4 +1,0 @@
-outs:
-- md5: c1a258b839ddf09ec1d0cbb0b2c75d30
-  size: 126583394
-  path: bitcoin_twitter_processed.csv.gz
