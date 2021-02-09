@@ -1,0 +1,5 @@
+outs:
+- md5: 6ebb29388452257461a79db06a046895.dir
+  size: 325806568
+  nfiles: 13
+  path: bitcoin_twitter_raw

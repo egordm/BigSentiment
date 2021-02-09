@@ -1,0 +1,4 @@
+outs:
+- md5: 03607968484f09dfdff3dcc7b97518f5
+  size: 292664
+  path: helper_bert_uncased_vocabulary.pickle

@@ -18,6 +18,14 @@ scraper news
 # Add --help to see more args
 ```
 
+### Extras
+```shell
+kaggle datasets download --unzip -p kaggle supertaz/pretrained-bert-including-scripts
+kaggle datasets download --unzip -p kaggle takuok/glove840b300dtxt
+kaggle datasets download --unzip -p kaggle yekenot/fasttext-crawl-300d-2m
+kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20190329
+```
+
 
 
 ## TODO
@@ -30,9 +38,15 @@ scraper news
 * [ ] Scrape 4chan(archives) (note 4chan has api)
 * [ ] Scrape warosu
 * [ ] Create News Dataset
-* [ ] Import Twitter Dataset
-* [ ] Create Twitter Dataset
-* [ ] Configure persistent mongodb
-* [ ] Import Binance data
-* [ ] Scrape Binance data
-* [ ] Fix 429 too many requests for twitter
+* [x] Import Twitter Dataset
+* [x] Create Twitter Dataset
+* [x] Configure persistent mongodb
+* [x] Import Binance data
+* [x] Scrape Binance data
+* [ ] Devise architecture for sentiment analysis
+* [ ] Create Label generation for sentiment analysis
+* [ ] Create Batch generation for sentiment analysis
+
+## Instpiration / References
+* https://github.com/Drabble/TwitterSentimentAndCryptocurrencies
+* https://www.kaggle.com/kyakovlev/preprocessing-bert-public/data

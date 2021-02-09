@@ -1,0 +1,4 @@
+outs:
+- md5: e7d7e5f9f88e1d2155342ffc59e51920
+  size: 171
+  path: helper_normalized_chars.pickle

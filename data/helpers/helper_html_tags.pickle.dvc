@@ -1,0 +1,4 @@
+outs:
+- md5: 54f674ae08efe60aae2c7ee7ac8d9959
+  size: 880
+  path: helper_html_tags.pickle

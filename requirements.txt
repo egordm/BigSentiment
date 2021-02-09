@@ -12,3 +12,11 @@ python-dotenv
 pendulum
 praw
 python-binance
+vaderSentiment
+matplotlib
+transformers
+torch
+emoji
+psutil
+gensim
+bs4
