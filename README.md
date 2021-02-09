@@ -34,6 +34,7 @@ kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20
 * [x] Scrape https://www.newsbtc.com
 * [x] Scrape https://www.coindesk.com
 * [x] Scrape https://cointelegraph.com
+* [x] Scrape https://coinmarketcap.com
 * [ ] Scrape Reddit (r/cryptomoonshots, r/bitcoin, r/satoshistreetbets, r/cryptocurrency)
 * [ ] Scrape 4chan(archives) (note 4chan has api)
 * [ ] Scrape warosu

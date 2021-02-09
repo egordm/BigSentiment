@@ -58,7 +58,7 @@ def coinmarketcap(symbols):
                 result = requests.get('https://web-api.coinmarketcap.com/v1.1/cryptocurrency/quotes/historical', params={
                     'convert': f'{sym_to},{sym_from}',
                     'format': 'chart_crypto_details',
-                    'id': 1,
+                    'symbol': sym_from,
                     'interval': step,
                     'time_end': till_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
                     'time_start': from_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
