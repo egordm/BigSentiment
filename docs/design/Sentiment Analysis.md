@@ -10,3 +10,6 @@
 * https://github.com/google-research/albert/issues/127#issuecomment-581869983
 * https://towardsdatascience.com/from-pre-trained-word-embeddings-to-pre-trained-language-models-focus-on-bert-343815627598
 * https://towardsdatascience.com/fine-tune-albert-with-pre-training-on-custom-corpus-f56ea3cfdc82
+* https://github.com/VinAIResearch/BERTweet
+* https://github.com/huggingface/transformers/issues/1413
+* https://colab.research.google.com/drive/1fXFH7g4nfbxBo42icI4ZMy-0TAGAxc2i

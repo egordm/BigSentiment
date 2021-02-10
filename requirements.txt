@@ -20,3 +20,6 @@ emoji
 psutil
 gensim
 bs4
+scikit-learn
+langdetect
+sentencepiece

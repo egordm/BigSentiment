@@ -2,3 +2,5 @@
 !/*.dvc
 /bitcoin_twitter_raw
 /bitcoin_twitter_processed
+/bitcoin_twitter_labeled
+/bitcoin_twitter_labeled_normalized

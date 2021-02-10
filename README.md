@@ -26,7 +26,10 @@ kaggle datasets download --unzip -p kaggle yekenot/fasttext-crawl-300d-2m
 kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20190329
 ```
 
-
+Backup mongodb
+```shell
+mongodump -u root -p bigbrain --authenticationDatabase admin --db scrapper --gzip --archive > ./bighead-premerge.gz
+```
 
 ## TODO
 * [x] Scrape twitter
@@ -47,6 +50,7 @@ kaggle datasets download --unzip -p kaggle alaix14/bitcoin-tweets-20160101-to-20
 * [ ] Devise architecture for sentiment analysis
 * [ ] Create Label generation for sentiment analysis
 * [ ] Create Batch generation for sentiment analysis
+* [ ] Integrate apache airflow for automatic dataset generation
 
 ## Instpiration / References
 * https://github.com/Drabble/TwitterSentimentAndCryptocurrencies
