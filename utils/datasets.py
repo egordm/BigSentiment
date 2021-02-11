@@ -1,4 +1,5 @@
 import os
+import pickle
 import random
 import shutil
 import re
@@ -111,3 +112,10 @@ def df_parallelize_run(df, func):
     pool.close()
     pool.join()
     return df
+
+
+## Load helper helper))
+def load_helper_file(filename):
+    with open(os.path.join(os.path.dirname(__file__), '../data/helpers', filename + '.pickle'), 'rb') as f:
+        temp_obj = pickle.load(f)
+    return temp_obj

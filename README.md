@@ -55,3 +55,5 @@ mongodump -u root -p bigbrain --authenticationDatabase admin --db scrapper --gzi
 ## Instpiration / References
 * https://github.com/Drabble/TwitterSentimentAndCryptocurrencies
 * https://www.kaggle.com/kyakovlev/preprocessing-bert-public/data
+
+clean dupes
