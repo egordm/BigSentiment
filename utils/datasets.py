@@ -119,3 +119,40 @@ def load_helper_file(filename):
     with open(os.path.join(os.path.dirname(__file__), '../data/helpers', filename + '.pickle'), 'rb') as f:
         temp_obj = pickle.load(f)
     return temp_obj
+
+
+## Build of vocabulary from file - reading data line by line
+## Line splited by 'space' and we store just first argument - Word
+# :path - txt/vec/csv absolute file path        # type: str
+def get_vocabulary(path):
+    with open(path) as f:
+        return [line.strip().split()[0] for line in f][0:]
+
+
+## Check how many words are in Vocabulary
+# :c_list - 1d array with 'comment_text'        # type: pandas Series
+# :vocabulary - words in vocabulary to check    # type: list of str
+# :response - type of response                  # type: str
+def check_vocab(c_list, vocabulary, response='default'):
+    try:
+        words = set([w for line in c_list for w in line.split()])
+        u_list = words.difference(set(vocabulary))
+        k_list = words.difference(u_list)
+
+        if response == 'default':
+            print('Unknown words:', len(u_list), '| Known words:', len(k_list))
+        elif response == 'unknown_list':
+            return list(u_list)
+        elif response == 'known_list':
+            return list(k_list)
+    except:
+        return []
+
+
+def print_dict(temp_dict, n_items=10):
+    run = 0
+    for k, v in temp_dict.items():
+        print(k, '---', v)
+        run += 1
+        if run == n_items:
+            break

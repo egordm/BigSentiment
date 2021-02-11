@@ -13,3 +13,9 @@
 * https://github.com/VinAIResearch/BERTweet
 * https://github.com/huggingface/transformers/issues/1413
 * https://colab.research.google.com/drive/1fXFH7g4nfbxBo42icI4ZMy-0TAGAxc2i
+
+## Citation / Papers
+* https://www.frontiersin.org/articles/10.3389/fphy.2019.00098/full
+
+## Other approaches
+* Gradient Boosting: https://www.kaggle.com/kamalnaithani/lightgbm-stock-prediction-1-1

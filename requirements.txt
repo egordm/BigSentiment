@@ -23,3 +23,5 @@ bs4
 scikit-learn
 langdetect
 sentencepiece
+pandarallel
+tensortrade
