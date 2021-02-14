@@ -20,8 +20,9 @@ emoji
 psutil
 gensim
 bs4
-scikit-learn
 langdetect
-sentencepiece
 pandarallel
+scikit-learn
+sentencepiece
 tensortrade
+fasttext

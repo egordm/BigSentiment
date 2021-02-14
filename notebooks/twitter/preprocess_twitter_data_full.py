@@ -23,8 +23,9 @@ pd.options.display.max_colwidth = 200
 
 ## Initial vars
 
-OUTPUT_PATH = '../../data/bitcoin_twitter_processed'
-HELPER_PATH = '../../data/helpers/'
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+OUTPUT_PATH = os.path.join(ROOT_DIR, 'data/bitcoin_twitter_processed')
+HELPER_PATH = os.path.join(ROOT_DIR, 'data/helpers')
 LOCAL_TEST = True  ## Local test - for test performance on part of the train set only
 verbose = True
 WPLACEHOLDER = 'word_placeholder'
@@ -90,7 +91,7 @@ emoji_dict = set(e for lang in emoji.UNICODE_EMOJI.values() for e in lang)
 
 # %%
 ## Load Data
-files = pathlib.Path("../../data/bitcoin_twitter_raw/").glob("part_*.parquet")
+files = pathlib.Path(os.path.join(ROOT_DIR, 'data/bitcoin_twitter_raw')).glob("part_*.parquet")
 for chunk, file in enumerate(files):
     data = pd.read_parquet(file)
 
