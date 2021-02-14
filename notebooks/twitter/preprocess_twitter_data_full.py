@@ -616,6 +616,7 @@ for chunk, file in enumerate(files):
     translate_prefix = {
         '~': 'around',
         '+-': 'around',
+        '±': 'around',
         '@': 'at',
         '=': 'equals',
         '*#': 'ranked',
@@ -627,8 +628,8 @@ for chunk, file in enumerate(files):
         temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
         temp_vocab = [k for k in temp_vocab if check_replace(k)]
         temp_dict = {}
-        re_inb = re.compile('[.,\'"`]')
-        re_num = re.compile('^(~|\+-|@|=|#|\*#)?[-@+*^#:]?[$£%€]?(([.:]?[0-9])+)[$£%€]?')
+        re_inb = re.compile('[,\'"`]')
+        re_num = re.compile('^(~|\+-|±|@|=|#|\*#)?[-@+*^#:]?[$£%€]?(([.:]?[0-9])+)[$£%€]?')
         re_fix = re.compile('^[$£%€][-+][0-9]')
         for word in temp_vocab:
             prefilter = re_inb.sub('', word).replace(',', '.')
@@ -687,7 +688,8 @@ for chunk, file in enumerate(files):
 
     # Clean up numbers
     for i in range(4):
-        texts = texts.pipe(serialize_numbers)
+        texts.pipe(serialize_numbers)
+        # texts = texts.pipe(serialize_numbers)
 
     # %%
     # Extract entities again
