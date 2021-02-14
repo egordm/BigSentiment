@@ -29,19 +29,23 @@ def ensure_dataset(dir, delete=False):
     os.makedirs(dir, exist_ok=True)
 
 
-def batched_dataset(cursor, dir, dataset_size, batch_size):
+def batched_dataset(cursor, dir, dataset_size, batch_size, callback=None):
     ensure_dataset(dir, delete=True)
     i = 0
     df = pd.DataFrame()
     for batch in batched(cursor, batch_size):
         df = df.append(batch, ignore_index=True)
         if len(df) >= dataset_size:
+            if callback:
+                df = callback(df)
             df.to_parquet(os.path.join(dir, f'part_{i}.parquet'))
             print(f'Writing part {i}')
             df = pd.DataFrame()
             i += 1
 
     if len(df) >= 0:
+        if callback:
+            df = callback(df)
         df.to_parquet(os.path.join(dir, f'part_{i}.parquet'))
         print(f'Writing part {i}')
 
@@ -156,3 +160,5 @@ def print_dict(temp_dict, n_items=10):
         run += 1
         if run == n_items:
             break
+
+

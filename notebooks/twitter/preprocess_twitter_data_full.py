@@ -1,4 +1,5 @@
-# Credit to: https://www.kaggle.com/kyakovlev/preprocessing-bert-public
+# Credit for some parts to: https://www.kaggle.com/kyakovlev/preprocessing-bert-public
+# Number extraction and hashtags is my baby
 
 # General imports|
 import pathlib
@@ -11,70 +12,45 @@ from gensim.utils import deaccent
 from collections import Counter
 from bs4 import BeautifulSoup
 from utils.datasets import *
+from pandarallel import pandarallel
+import fasttext
 
+pandarallel.initialize()
 warnings.filterwarnings('ignore')
 pd.options.display.max_columns = 10
 pd.options.display.max_colwidth = 200
-
 # %%
+
 ## Initial vars
 
 OUTPUT_PATH = '../../data/bitcoin_twitter_processed'
 HELPER_PATH = '../../data/helpers/'
-LOCAL_TEST = True  # Local test - for test performance on part of the train set only
+LOCAL_TEST = True  ## Local test - for test performance on part of the train set only
 verbose = True
 WPLACEHOLDER = 'word_placeholder'
-EPLACEHOLDER = 'ENTITY'
-SEED = 42  # Seed for enviroment
-seed_everything(SEED)  # Seed everything
+URL_TAG = '@URL'
+USER_TAG = '@USR'
+NUMBER_TAG = '@NUM'
+HASH_TAG = '@HTAG'
+CURRENCY_TAG = '@CURR'
+IMMUTABLES = [WPLACEHOLDER, URL_TAG, USER_TAG, NUMBER_TAG, HASH_TAG, CURRENCY_TAG]
+
+SEED = 42  ## Seed for enviroment
+seed_everything(SEED)  ## Seed everything
+
 ensure_dataset(OUTPUT_PATH, delete=True)
 
 
 # %%
-## Helpers
-
-## Load helper helper))
-def load_helper_file(filename):
-    with open(HELPER_PATH + filename + '.pickle', 'rb') as f:
-        temp_obj = pickle.load(f)
-    return temp_obj
-
-
-## Build of vocabulary from file - reading data line by line
-## Line splited by 'space' and we store just first argument - Word
-# :path - txt/vec/csv absolute file path        # type: str
-def get_vocabulary(path):
-    with open(path) as f:
-        return [line.strip().split()[0] for line in f][0:]
-
-
-## Check how many words are in Vocabulary
-# :c_list - 1d array with 'comment_text'        # type: pandas Series
-# :vocabulary - words in vocabulary to check    # type: list of str
-# :response - type of response                  # type: str
-def check_vocab(c_list, vocabulary, response='default'):
-    try:
-        words = set([w for line in c_list for w in line.split()])
-        u_list = words.difference(set(vocabulary))
-        k_list = words.difference(u_list)
-
-        if response == 'default':
-            print('Unknown words:', len(u_list), '| Known words:', len(k_list))
-        elif response == 'unknown_list':
-            return list(u_list)
-        elif response == 'known_list':
-            return list(k_list)
-    except:
-        return []
-
 
 ## Preprocess helpers
-def place_hold(w):
-    return WPLACEHOLDER + '[' + re.sub(' ', '___', w) + ']'
+def place_hold(w, tag=WPLACEHOLDER):
+    return tag + '[' + re.sub(' ', '___', w) + ']'
 
 
+## Helpers
 def check_replace(w):
-    return not bool(re.search(WPLACEHOLDER, w))
+    return not bool(re.search('|'.join(IMMUTABLES), w))
 
 
 def make_cleaning(s, c_dict):
@@ -84,25 +60,14 @@ def make_cleaning(s, c_dict):
 
 
 def make_dict_cleaning(s, w_dict, skip_check=False):
+    # Replaces a word using dict if it is mutable
     if skip_check or check_replace(s):
         s = w_dict.get(s, s)
     return s
 
 
-def export_dict(temp_dict, serial_num):
-    pd.DataFrame.from_dict(temp_dict, orient='index').to_csv('dict_' + str(serial_num) + '.csv')
-
-
-def print_dict(temp_dict, n_items=10):
-    run = 0
-    for k, v in temp_dict.items():
-        print(k, '---', v)
-        run += 1
-        if run == n_items:
-            break
-
-
 # %%
+
 ## Get basic helper data
 
 bert_uncased_vocabulary = load_helper_file('helper_bert_uncased_vocabulary')
@@ -120,6 +85,8 @@ normalized_chars = load_helper_file('helper_normalized_chars')
 white_list_chars = load_helper_file('helper_white_list_chars')
 white_list_punct = " '*-.,?!/:;_()[]{}<>=" + '"'
 pictograms_to_emoji = load_helper_file('helper_pictograms_to_emoji')
+helper_custom_synonyms = load_helper_file('helper_custom_synonyms')
+emoji_dict = set(e for lang in emoji.UNICODE_EMOJI.values() for e in lang)
 
 # %%
 ## Load Data
@@ -134,11 +101,17 @@ for chunk, file in enumerate(files):
     texts = texts.astype(str)
     if verbose: print('#' * 20, 'Initial State:'); check_vocab(texts, local_vocab)
 
+
     # %%
 
-    if global_lower:
+    def lower(texts):
         texts = texts.apply(lambda x: x.lower())
         if verbose: print('#' * 10, 'Step - Lowering everything:'); check_vocab(texts, local_vocab)
+        return texts
+
+
+    if global_lower:
+        texts = texts.pipe(lower)
 
     # %%
 
@@ -152,7 +125,6 @@ for chunk, file in enumerate(files):
     # %%
 
     # Remove 'control' chars
-    # Global
     global_chars_list = list(set([c for line in texts for c in line]))
     chars_dict = {c: '' for c in global_chars_list if unicodedata.category(c)[0] == 'C'}
     texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
@@ -161,7 +133,6 @@ for chunk, file in enumerate(files):
     # %%
 
     # Remove hrefs
-    # Global
     texts = texts.apply(
         lambda x: re.sub(re.findall(r'\<a(.*?)\>', x)[0], '', x) if (len(re.findall(r'\<a (.*?)\>', x)) > 0) and (
                     'href' in re.findall(r'\<a (.*?)\>', x)[0]) else x)
@@ -170,10 +141,9 @@ for chunk, file in enumerate(files):
     # %%
 
     # Convert or remove Bad Symbols
-    # Global
     global_chars_list = list(set([c for line in texts for c in line]))
     chars = ''.join([c for c in global_chars_list if
-                     (c not in bert_char_list) and (c not in emoji.UNICODE_EMOJI) and (c not in white_list_chars)])
+                     (c not in bert_char_list) and (c not in emoji_dict) and (c not in white_list_chars)])
     chars_dict = {}
     for char in chars:
         try:
@@ -195,8 +165,8 @@ for chunk, file in enumerate(files):
     # Global
     global_chars_list = list(set([c for line in texts for c in line]))
     chars = '·' + ''.join([c for c in global_chars_list if
-                           (c not in white_list_chars) and (c not in emoji.UNICODE_EMOJI) and (
-                                       c not in white_list_punct) and (ord(c) > 256)])
+                           (c not in white_list_chars) and (c not in emoji_dict) and (c not in white_list_punct) and (
+                                       ord(c) > 256)])
     chars_dict = {}
     for char in chars:
         try:
@@ -240,9 +210,9 @@ for chunk, file in enumerate(files):
     for word in temp_dict:
         new_value = temp_dict[word]
         if word.find('http') > 2:
-            temp_dict[word] = word[:word.find('http')] + ' ' + place_hold(new_value)
+            temp_dict[word] = word[:word.find('http')] + ' ' + place_hold(new_value, URL_TAG)
         else:
-            temp_dict[word] = place_hold(new_value)
+            temp_dict[word] = place_hold(new_value, URL_TAG)
 
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Convert urls part 1:'); check_vocab(texts, local_vocab);
@@ -252,7 +222,7 @@ for chunk, file in enumerate(files):
 
     # Remove twitter links
     temp_dict = {
-        'word_placeholder[t.co]': ''
+        f'{URL_TAG}[t.co]': ''
     }
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Convert urls part 1.5:'); check_vocab(texts, local_vocab);
@@ -264,7 +234,7 @@ for chunk, file in enumerate(files):
     temp_vocab = [k for k in temp_vocab if check_replace(k)]
     symbols = {
         '&quot;': '',
-        '&&amp;': '',
+        '&amp;': ' and ',
         '&lt;': '',
         '&gt;': '',
     }
@@ -306,7 +276,7 @@ for chunk, file in enumerate(files):
                     break
 
         if url_check:
-            temp_dict[word] = place_hold(domain_search(word))
+            temp_dict[word] = place_hold(domain_search(word), URL_TAG)
 
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Convert urls part 2:'); check_vocab(texts, local_vocab);
@@ -336,7 +306,7 @@ for chunk, file in enumerate(files):
     # Isolate emoji
     # Global
     global_chars_list = list(set([c for line in texts for c in line]))
-    chars = ''.join([c for c in global_chars_list if c in emoji.UNICODE_EMOJI])
+    chars = ''.join([c for c in global_chars_list if c in emoji_dict])
     chars_dict = {ord(c): f' {c} ' for c in chars}
     texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Isolate emoji:'); check_vocab(texts, local_vocab)
@@ -387,8 +357,8 @@ for chunk, file in enumerate(files):
     temp_vocab = [k for k in temp_vocab if check_replace(k)]
     temp_dict = {}
     for word in temp_vocab:
-        if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and (len(Counter(word)) == 1) and (
-                len(word) > 2):
+        if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and (
+                len(Counter(word)) == 1) and (len(word) > 2):
             temp_dict[word] = ' '.join([' ' + next(iter(Counter(word).keys())) + ' ' for i in range(1)])
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Spam chars repetition:'); check_vocab(texts, local_vocab);
@@ -437,51 +407,127 @@ for chunk, file in enumerate(files):
     if verbose: print('#' * 10, 'Step - Break long words:'); check_vocab(texts, local_vocab);
     if verbose: print_dict(temp_dict)
 
+
     # %%
 
     # Break long words
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_vocab = [k for k in temp_vocab if len(k) > 20]
+    def break_long_words(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_vocab = [k for k in temp_vocab if len(k) > 20]
+
+        temp_dict = {}
+        for word in temp_vocab:
+            if '_' in word:
+                temp_dict[word] = re.sub('_', ' ', word)
+            elif '/' in word and not word.startswith('u/') and not word.startswith('r/'):
+                temp_dict[word] = re.sub('/', ' / ', word)
+            elif len(' '.join(word.split('-')).split()) > 2:
+                temp_dict[word] = re.sub('-', ' ', word)
+            for s in ',.:;':
+                if s in word and not re.compile('[+#@$/,.:;-]').sub('', word).isnumeric():
+                    temp_dict[word] = word.replace(s, f' {s} ')
+
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Break long words:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    for i in range(3):
+        texts = texts.pipe(break_long_words)
+
+    # %%
+
+    # TODO: add number parsing before
+    # Diambiguate entities
+    # Split words on @,# and $ to clear up ambiguities between entitites
+    symbols = '@#$'
+    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('@' in k or '#' in k or '$' in k)]
 
     temp_dict = {}
     for word in temp_vocab:
-        if '_' in word:
-            temp_dict[word] = re.sub('_', ' ', word)
-        elif '/' in word and not word.startswith('u/') and not word.startswith('r/'):
-            temp_dict[word] = re.sub('/', ' / ', word)
-        elif len(' '.join(word.split('-')).split()) > 2:
-            temp_dict[word] = re.sub('-', ' ', word)
+        for symbol in symbols:
+            if symbol not in word: continue
+            left, *right = word.split(symbol)
+            rightz = symbol.join(right)
+            if len(left) > 0 and len(right[0]) > 0 and right[0].isalnum():
+                temp_dict[word] = f'{left} {symbol}{rightz}'
+            break
 
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Break long words:'); check_vocab(texts, local_vocab);
+    if verbose: print('#' * 10, 'Step - Disambiguate entities:'); check_vocab(texts, local_vocab);
     if verbose: print_dict(temp_dict)
+
+
+    # %%
+
+    def custom_synonyms(texts):
+        temp_dict = {}
+        for wfrom, wto in helper_custom_synonyms.items():
+            temp_dict[wfrom] = wto
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Custom word synonyms:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(custom_synonyms)
+
 
     # %%
 
     # Remove/Convert usernames and hashtags
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        if (len(word) > 3) and (word[1:len(word) - 1].replace('_', '').isalnum()):
-            if not re.compile('[#@$/,.:;]').sub('', word).isnumeric():
-                if (word.startswith('@')) or (word.startswith('#')):
-                    new_word = place_hold(new_word[0] + new_word[1:])
-                elif word.startswith('u/'):
-                    new_word = place_hold('@' + new_word[2:])
-                elif word.startswith('r/'):
-                    new_word = place_hold('#' + new_word[2:])
-                elif word.startswith('$') and word[1:].isalpha():
-                    new_word = place_hold('#' + new_word[1:])
-        temp_dict[word] = new_word
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - UserName and Hashtag:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def extract_entities(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if (len(word) > 2) and (word[1:len(word) - 1].replace('\'s', '').replace('_', '').isalnum()):
+                new_word = word.replace('\'s', '')
+                if not re.compile('[#@$/,.:;]').sub('', new_word).isnumeric():
+                    new_word = re.compile('[,.:;]').sub('', new_word)
+                    if word.startswith('@'):
+                        temp_dict[word] = place_hold(new_word[1:], USER_TAG)
+                    elif word.startswith('#'):
+                        temp_dict[word] = place_hold(new_word[1:], HASH_TAG)
+                    elif word.startswith('u/'):
+                        temp_dict[word] = place_hold(new_word[2:], USER_TAG)
+                    elif word.startswith('r/'):
+                        temp_dict[word] = place_hold(new_word[2:], HASH_TAG)
+                    elif word.startswith('$') and word[1:].isalpha():
+                        temp_dict[word] = place_hold(new_word[1:], CURRENCY_TAG)
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - UserName and Hashtag:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(extract_entities)
+
+
+    # %%
+
+    # Hashtag and currency union
+    def hashtag_currency_union(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = set([k for k in temp_vocab if not check_replace(k)])
+        temp_dict = {}
+        for w in temp_vocab:
+            if w.startswith(CURRENCY_TAG):
+                if w.replace(CURRENCY_TAG, HASH_TAG) in temp_vocab:
+                    temp_dict[w.replace(CURRENCY_TAG, HASH_TAG)] = w
+                if w.replace(CURRENCY_TAG, USER_TAG) in temp_vocab:
+                    temp_dict[w.replace(CURRENCY_TAG, USER_TAG)] = w
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Hashtag and currency union:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(hashtag_currency_union)
 
     # %%
 
@@ -531,6 +577,9 @@ for chunk, file in enumerate(files):
     for word in temp_vocab:
         new_word = word
         for i in range(len(word), 0, -1):
+            if word[i - 1].isnumeric() and re.compile('[$£%€]').match(word[i]):
+                break
+
             if word[i - 1].isalnum():
                 new_word = word[:i] + ' ' + word[i:]
                 break
@@ -542,22 +591,137 @@ for chunk, file in enumerate(files):
 
     # %%
 
+    scale_mapping = {
+        'b': 1000000000,
+        'bn': 1000000000,
+        'bln': 1000000000,
+        'billion': 1000000000,
+        'm': 1000000,
+        'mn': 1000000,
+        'mln': 1000000,
+        'million': 1000000,
+        'k': 1000,
+        'thousand': 1000,
+        '-': -1,
+    }
+
+    translate = {
+        '$': 'dollar', '£': 'pound', '%': 'percent', '€': 'euro'
+    }
+
+    translate_suffix = {
+        'x': 'times'
+    }
+
+    translate_prefix = {
+        '~': 'around',
+        '+-': 'around',
+        '@': 'at',
+        '=': 'equals',
+        '*#': 'ranked',
+        '#': 'ranked',
+    }
+
+
+    def serialize_numbers(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        re_inb = re.compile('[.,\'"`]')
+        re_num = re.compile('^(~|\+-|@|=|#|\*#)?[-@+*^#:]?[$£%€]?(([.:]?[0-9])+)[$£%€]?')
+        re_fix = re.compile('^[$£%€][-+][0-9]')
+        for word in temp_vocab:
+            prefilter = re_inb.sub('', word).replace(',', '.')
+            if re_fix.search(prefilter):
+                prefilter = prefilter[1] + prefilter[0] + prefilter[2:]
+            result = re_num.search(prefilter)
+
+            if result and result.pos == 0:
+                # Process combined numbers / ranges in next iteration
+                if '-' in word and not word.startswith('-') and not word.startswith('+-'):
+                    temp_dict[word] = ' '.join(word.split('-'))
+                    continue
+
+                main_part = prefilter[:result.end()]
+                prefix = ''
+                for prefix_key, prefix_name in translate_prefix.items():
+                    if main_part.startswith(prefix_key):
+                        prefix = prefix_name
+                        main_part = main_part.replace(prefix_key, '', 1)
+                        break
+
+                main = re.compile('^[~@+*^#:]').sub('', main_part)
+                currency = re.compile('[$£%€]').search(main)
+                currency = main[currency.start():currency.end()] if currency else None
+                main = re.compile('[$£%€]').sub('', main)
+                suffix = prefilter[result.end():]
+
+                multiplier = 1
+                if re.compile('\.[0-9]{1,2}$').search(main):  # decimal
+                    multiplier *= 0.01 if main[-1].isnumeric() else 0.1
+                if '-' in main:  # Neg numbers
+                    multiplier *= -1
+                    main = main.replace('-', '')
+                # Textual scale
+                if suffix in scale_mapping:
+                    multiplier *= scale_mapping[suffix]
+                    suffix = ''
+                if suffix in translate_suffix:
+                    suffix = translate_suffix[suffix]
+
+                number = round(float(main.replace('.', '').replace(':', '')) * multiplier, 2)
+                # print(f'{number}  /  {currency}  /  {suffix}  /  {word}')
+                # noinspection PyTypeChecker
+                temp_dict[word] = ' '.join(filter(len, [
+                    prefix,
+                    place_hold(str(number), NUMBER_TAG),
+                    translate[currency] if currency else '',
+                    suffix
+                ]))
+
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Serialize numbers:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    # Clean up numbers
+    for i in range(4):
+        texts = texts.pipe(serialize_numbers)
+
+    # %%
+    # Extract entities again
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
+    # %%
+
     # Start word punctuations
     # Global
     temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (not k[0].isalnum())]
+    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (not k[0].isalnum() and k[0] not in ['@', '#', '$'])]
     temp_dict = {}
     for word in temp_vocab:
         new_word = word
         for i in range(len(word)):
-            if word[i].isalnum():
+            if word[i].isalnum() or word[i] in ['#', '@', '$']:
                 new_word = word[:i] + ' ' + word[i:]
                 break
         temp_dict[word] = new_word
     temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+    # texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i,temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Start word punctuations:'); check_vocab(texts, local_vocab);
     if verbose: print_dict(temp_dict)
+
+    # %%
+
+    # Extract entities again and numbers
+    texts = texts.pipe(serialize_numbers)
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
 
     # %%
 
@@ -617,6 +781,15 @@ for chunk, file in enumerate(files):
 
     # %%
 
+    # Extract entities again and numbers
+    texts = texts.pipe(serialize_numbers)
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
+
+    # %%
+
     # Try remove duplicated chars (not sure about this!!!!!). TODO check fist against vocab?
     # Local (only unknown words)
     temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
@@ -641,6 +814,14 @@ for chunk, file in enumerate(files):
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Dup chars (with vocab check):'); check_vocab(texts, local_vocab);
     if verbose: print_dict(temp_dict)
+
+    # %%
+    # Extract entities again and numbers
+    texts = texts.pipe(serialize_numbers)
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
 
     # %%
 
@@ -744,11 +925,19 @@ for chunk, file in enumerate(files):
     if verbose: print_dict(temp_dict)
 
     # %%
+    # Extract entities again and numbers
+    texts = texts.pipe(serialize_numbers)
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
+
+    # %%
 
     # Remove placeholders
     # Global
     temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if (not check_replace(k))]
+    temp_vocab = [k for k in temp_vocab if (not check_replace(k) and k.startswith(WPLACEHOLDER))]
     temp_dict = {}
     for word in temp_vocab:
         temp_dict[word] = re.sub('___', ' ', word[17:-1])
@@ -766,6 +955,33 @@ for chunk, file in enumerate(files):
     texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
     if verbose: print('#' * 10, 'Step - Multiple form:'); check_vocab(texts, local_vocab);
     if verbose: print_dict(temp_dict)
+
+    # %%
+    # Extract entities again and numbers
+    texts = texts.pipe(serialize_numbers)
+    texts = texts \
+        .pipe(custom_synonyms) \
+        .pipe(extract_entities) \
+        .pipe(hashtag_currency_union)
+
+    # %%
+    # Cut away non english tweets
+    model = fasttext.load_model('../../data/kaggle/lid.176.ftz')
+
+
+    def langcheck(item, min_confidence=0.2):
+        text = ' '.join([w for w in item.split() if not w.startswith('@')])
+        if len(text) < 3:
+            return True
+        results = dict(zip(*model.predict(text, k=2)))
+        return results.get('__label__en', 0) > min_confidence
+
+
+    mask = texts.parallel_map(langcheck)
+    if verbose: print(f'Deleted: {1 - sum(mask) / len(texts)}')
+    texts = texts[mask]
+    data = data[mask]
+    if verbose: print('#' * 10, 'Step - Language datection:'); check_vocab(texts, local_vocab);
 
     # %%
     data['text'] = texts
