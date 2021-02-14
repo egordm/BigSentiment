@@ -1,4 +1,5 @@
 import logging
+import pathlib
 
 import click
 import os.path
@@ -8,8 +9,12 @@ import requests
 from binance.client import Client
 import pendulum
 from pymongo.errors import BulkWriteError
+import pandas as pd
+import time
 
 from config import mongodb
+
+DATA_FOLDER = 'data/cryptodata'
 
 TIMESTEPS = {
     '5m': 300,
@@ -18,28 +23,25 @@ TIMESTEPS = {
     '4h': 14400,
     '1d': 86400
 }
-KEYS = [
-    'timestamp','close', 'volume_24hr', 'market_cap'
-]
 
-ITEM_LIMIT = 10000 - 1000
+ITEM_LIMIT = 1000
 
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2656.18 Safari/537.36'
 
+ALLOWED_PAIRS = ['btcusd', 'btcusdc', 'xrpusd', 'ltcusd', 'ethusd', 'ethusdc', 'bchusd', 'paxusd', 'xlmusd', 'linkusd',
+                 'omgusd']
 
 
 @click.command()
-@click.option('--symbols', default=['USD-BTC'], help='Symbols to fetch data for', required=True, multiple=True)
-def coinmarketcap(symbols):
-    logging.info(f'Scraping coinmerketcap symbols. Symbols: {symbols}, Timeframes: {TIMESTEPS}')
+@click.option('--symbols', default=ALLOWED_PAIRS, help='Symbols to fetch data for', required=True, multiple=True)
+def bitstamp(symbols):
+    logging.info(f'Scraping bitstamp symbols. Symbols: {symbols}, Timeframes: {TIMESTEPS}')
 
     db = mongodb()
     scrapperdb = db['market']
-    group = scrapperdb['coinmarketcap']
+    group = scrapperdb['bitstamp']
 
     for symbol in symbols:
-        sym_to, sym_from = symbol.split('-')
-
         for step, delta in reversed(TIMESTEPS.items()):
             output = group[symbol][step]
             output.ensure_index([
@@ -55,38 +57,29 @@ def coinmarketcap(symbols):
             for from_dt in period.range('seconds', delta * ITEM_LIMIT):
                 till_dt = from_dt.add(seconds=delta * ITEM_LIMIT)
 
-                result = requests.get('https://web-api.coinmarketcap.com/v1.1/cryptocurrency/quotes/historical', params={
-                    'convert': f'{sym_to},{sym_from}',
-                    'format': 'chart_crypto_details',
-                    'symbol': sym_from,
-                    'interval': step,
-                    'time_end': till_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
-                    'time_start': from_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
-                    'skip_invalid': True
+                time.sleep(1)
+                result = requests.get(f'https://www.bitstamp.net/api/v2/ohlc/{symbol}/', params={
+                    'step': delta,
+                    'start': from_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
+                    'end': till_dt.replace(tzinfo=pendulum.UTC).int_timestamp,
+                    'limit': 1000
                 }, headers={
                     'User-Agent': USER_AGENT,
                 }).json()
 
-                if 'data' not in result:
-                    if 'older than' in result['status']['error_message']:
-                        continue
-
                 klines = []
-                for tick_dt, tick_data in result['data'].items():
-                    klines.append([
-                        pendulum.parse(tick_dt).int_timestamp,
-                        *tick_data[sym_to]
-                    ])
+                for tick_data in result['data']['ohlc']:
+                    klines.append(tick_data)
 
                 if len(klines) == 0:
                     continue
 
                 try:
                     output.insert_many(
-                        [{**dict(zip(KEYS, line)), '_id': line[0]} for line in klines],
+                        [{**line, '_id': line['timestamp']} for line in klines],
                         ordered=False
                     )
                 except BulkWriteError as e:
                     pass
 
-    logging.info(f'Finished scraping coinmarketcap. Symbols: {symbols}, Timeframes: {TIMESTEPS}')
+    logging.info(f'Finished scraping bitstamp. Symbols: {symbols}, Timeframes: {TIMESTEPS}')
