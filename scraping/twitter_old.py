@@ -8,7 +8,7 @@ import re
 import click
 import pendulum
 import time
-from fake_useragent import UserAgent
+# from fake_useragent import UserAgent
 
 from config import mongodb
 
