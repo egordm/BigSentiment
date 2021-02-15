@@ -21,7 +21,7 @@ CURRENCIES = [
 ]
 
 TIMEFRAMES = {
-    '-12h': -HOUR * 8,
+    'n12h': -HOUR * 8,
     '12h': HOUR * 12,
     '1d': DAY,
     '2d': DAY * 2,
@@ -68,7 +68,7 @@ for chunk, file in enumerate(files):
             new_value = market['close'].iloc[indices]
             result = np.array(new_value - current_value) / current_value
             result[~mask] = None
-            labels[f'feat-{CURRENCY}-change-{label}'] = result
+            labels[f'feat_{CURRENCY}_change_{label}'] = result
 
         labels = pd.DataFrame(labels)
         datasets.append(labels)
