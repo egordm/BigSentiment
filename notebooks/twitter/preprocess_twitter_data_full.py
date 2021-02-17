@@ -19,9 +19,10 @@ pandarallel.initialize()
 warnings.filterwarnings('ignore')
 pd.options.display.max_columns = 10
 pd.options.display.max_colwidth = 200
-# %%
 
 ## Initial vars
+
+offset = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 OUTPUT_PATH = os.path.join(ROOT_DIR, 'data/bitcoin_twitter_processed')
@@ -34,15 +35,19 @@ USER_TAG = '@USR'
 NUMBER_TAG = '@NUM'
 HASH_TAG = '@HTAG'
 CURRENCY_TAG = '@CURR'
-IMMUTABLES = [WPLACEHOLDER, URL_TAG, USER_TAG, NUMBER_TAG, HASH_TAG, CURRENCY_TAG]
+TIME_TAG = '@TIME'
+DATE_TAG = '@DATE'
+IMMUTABLES = [
+    WPLACEHOLDER,
+    URL_TAG, USER_TAG, NUMBER_TAG, HASH_TAG, CURRENCY_TAG,
+    TIME_TAG, DATE_TAG
+]
 
 SEED = 42  ## Seed for enviroment
 seed_everything(SEED)  ## Seed everything
 
 ensure_dataset(OUTPUT_PATH, delete=True)
 
-
-# %%
 
 ## Preprocess helpers
 def place_hold(w, tag=WPLACEHOLDER):
@@ -67,8 +72,6 @@ def make_dict_cleaning(s, w_dict, skip_check=False):
     return s
 
 
-# %%
-
 ## Get basic helper data
 
 bert_uncased_vocabulary = load_helper_file('helper_bert_uncased_vocabulary')
@@ -87,12 +90,19 @@ white_list_chars = load_helper_file('helper_white_list_chars')
 white_list_punct = " '*-.,?!/:;_()[]{}<>=" + '"'
 pictograms_to_emoji = load_helper_file('helper_pictograms_to_emoji')
 helper_custom_synonyms = load_helper_file('helper_custom_synonyms')
+helper_currency_synonyms = load_helper_file('helper_currency_synonyms')
+helper_custom_general_synonyms = load_helper_file('helper_custom_general_synonyms')
 emoji_dict = set(e for lang in emoji.UNICODE_EMOJI.values() for e in lang)
 
-# %%
 ## Load Data
 files = pathlib.Path(os.path.join(ROOT_DIR, 'data/bitcoin_twitter_raw')).glob("part_*.parquet")
 for chunk, file in enumerate(files):
+    if chunk < offset:
+        continue
+
+    if chunk > 0:
+        break
+
     data = pd.read_parquet(file)
 
     ## Start preprocessing
@@ -114,299 +124,462 @@ for chunk, file in enumerate(files):
     if global_lower:
         texts = texts.pipe(lower)
 
+
     # %%
 
     # Normalize chars and dots - SEE HELPER FOR DETAILS
-    # Global
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, normalized_chars) for i in x.split()]))
-    texts = texts.apply(lambda x: re.sub('\(dot\)', '.', x))
-    texts = texts.apply(lambda x: deaccent(x))
-    if verbose: print('#' * 10, 'Step - Normalize chars and dots:'); check_vocab(texts, local_vocab)
+    def normalize_chars(texts):
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, normalized_chars) for i in x.split()]))
+        texts = texts.apply(lambda x: re.sub('\(dot\)', '.', x))
+        texts = texts.apply(lambda x: deaccent(x))
+        if verbose: print('#' * 10, 'Step - Normalize chars and dots:'); check_vocab(texts, local_vocab)
+        return texts
+
+
+    texts = texts.pipe(normalize_chars)
+
 
     # %%
 
-    # Remove 'control' chars
-    global_chars_list = list(set([c for line in texts for c in line]))
-    chars_dict = {c: '' for c in global_chars_list if unicodedata.category(c)[0] == 'C'}
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Control Chars:'); check_vocab(texts, local_vocab)
+    def remove_control_chars(texts):
+        global_chars_list = list(set([c for line in texts for c in line]))
+        chars_dict = {c: '' for c in global_chars_list if unicodedata.category(c)[0] == 'C'}
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Control Chars:'); check_vocab(texts, local_vocab)
+        return texts
+
+
+    texts = texts.pipe(remove_control_chars)
+
 
     # %%
 
-    # Remove hrefs
-    texts = texts.apply(
-        lambda x: re.sub(re.findall(r'\<a(.*?)\>', x)[0], '', x) if (len(re.findall(r'\<a (.*?)\>', x)) > 0) and (
+    def remove_hrefs(texts):
+        texts = texts.apply(
+            lambda x: re.sub(re.findall(r'\<a(.*?)\>', x)[0], '', x) if (len(re.findall(r'\<a (.*?)\>', x)) > 0) and (
                     'href' in re.findall(r'\<a (.*?)\>', x)[0]) else x)
-    if verbose: print('#' * 10, 'Step - Remove hrefs:'); check_vocab(texts, local_vocab)
+        if verbose: print('#' * 10, 'Step - Remove hrefs:'); check_vocab(texts, local_vocab)
+        return texts
+
+
+    texts = texts.pipe(remove_hrefs)
+
 
     # %%
 
     # Convert or remove Bad Symbols
-    global_chars_list = list(set([c for line in texts for c in line]))
-    chars = ''.join([c for c in global_chars_list if
-                     (c not in bert_char_list) and (c not in emoji_dict) and (c not in white_list_chars)])
-    chars_dict = {}
-    for char in chars:
-        try:
-            new_char = unicodedata.name(char).split()[-1:][0].lower()
-            if len(new_char) == 1:
-                chars_dict[ord(char)] = new_char
-            else:
+    def convert_remove_bad_symbols(texts):
+        global_chars_list = list(set([c for line in texts for c in line]))
+        chars = ''.join([c for c in global_chars_list if
+                         (c not in bert_char_list) and (c not in emoji_dict) and (c not in white_list_chars)])
+        chars_dict = {}
+        for char in chars:
+            try:
+                new_char = unicodedata.name(char).split()[-1:][0].lower()
+                if len(new_char) == 1:
+                    chars_dict[ord(char)] = new_char
+                else:
+                    chars_dict[ord(char)] = ''
+            except:
                 chars_dict[ord(char)] = ''
-        except:
-            chars_dict[ord(char)] = ''
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove Bad Symbols:'); check_vocab(texts, local_vocab)
-    if verbose: print(chars)
-    if verbose: print_dict(chars_dict)
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove Bad Symbols:'); check_vocab(texts, local_vocab)
+        if verbose: print(chars)
+        if verbose: print_dict(chars_dict)
+        return texts
+
+
+    texts = texts.pipe(convert_remove_bad_symbols)
+
 
     # %%
 
     # Remove Bad Symbols PART 2
-    # Global
-    global_chars_list = list(set([c for line in texts for c in line]))
-    chars = '·' + ''.join([c for c in global_chars_list if
-                           (c not in white_list_chars) and (c not in emoji_dict) and (c not in white_list_punct) and (
-                                       ord(c) > 256)])
-    chars_dict = {}
-    for char in chars:
-        try:
-            new_char = unicodedata.name(char).split()[-1:][0].lower()
-            if len(new_char) == 1:
-                chars_dict[ord(char)] = new_char
-            else:
+    def convert_remove_bad_symbols2(texts):
+        global_chars_list = list(set([c for line in texts for c in line]))
+        chars = '·' + ''.join([c for c in global_chars_list if
+                               (c not in white_list_chars) and (c not in emoji_dict) and (
+                                       c not in white_list_punct) and (ord(c) > 256)])
+        chars_dict = {}
+        for char in chars:
+            try:
+                new_char = unicodedata.name(char).split()[-1:][0].lower()
+                if len(new_char) == 1:
+                    chars_dict[ord(char)] = new_char
+                else:
+                    chars_dict[ord(char)] = ''
+            except:
                 chars_dict[ord(char)] = ''
-        except:
-            chars_dict[ord(char)] = ''
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove Bad Symbols PART 2:'); check_vocab(texts, local_vocab)
-    if verbose: print(chars)
-    if verbose: print_dict(chars_dict)
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove Bad Symbols PART 2:'); check_vocab(texts, local_vocab)
+        if verbose: print(chars)
+        if verbose: print_dict(chars_dict)
+        return texts
+
+
+    texts = texts.pipe(convert_remove_bad_symbols2)
+
 
     # %%
 
-    # Remove html tags
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if ('<' in word) and ('>' in word):
-            for tag in html_tags:
-                if ('<' + tag + '>' in word) or ('</' + tag + '>' in word):
-                    temp_dict[word] = BeautifulSoup(word, 'html5lib').text
-    texts = texts.apply(lambda x: ' '.join([temp_dict.get(i, i) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - HTML tags:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def remove_html_tags(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if ('<' in word) and ('>' in word):
+                for tag in html_tags:
+                    if ('<' + tag + '>' in word) or ('</' + tag + '>' in word):
+                        temp_dict[word] = BeautifulSoup(word, 'html5lib').text
+        texts = texts.apply(lambda x: ' '.join([temp_dict.get(i, i) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - HTML tags:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_html_tags)
+
 
     # %%
 
     # Remove links (There is valuable information in links (probably you will find a way to use it))
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    url_rule = r'(?P<url>https?://[^\s]+)'
-    temp_dict = {k: domain_search(k) for k in temp_vocab if k != re.compile(url_rule).sub('url', k)}
+    def remove_links(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        url_rule = r'(?P<url>https?://[^\s]+)'
+        temp_dict = {k: domain_search(k) for k in temp_vocab if k != re.compile(url_rule).sub('url', k)}
 
-    for word in temp_dict:
-        new_value = temp_dict[word]
-        if word.find('http') > 2:
-            temp_dict[word] = word[:word.find('http')] + ' ' + place_hold(new_value, URL_TAG)
-        else:
-            temp_dict[word] = place_hold(new_value, URL_TAG)
+        for word in temp_dict:
+            new_value = temp_dict[word]
+            if word.find('http') > 2:
+                temp_dict[word] = word[:word.find('http')] + ' ' + place_hold(new_value, URL_TAG)
+            else:
+                temp_dict[word] = place_hold(new_value, URL_TAG)
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Convert urls part 1:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Convert urls part 1:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
 
-    # %%
+        # Remove twitter urls
+        temp_dict = {
+            f'{URL_TAG}[t.co]': ''
+        }
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Convert urls part 1.5:'); check_vocab(texts, local_vocab);
+        return texts
 
-    # Remove twitter links
-    temp_dict = {
-        f'{URL_TAG}[t.co]': ''
-    }
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Convert urls part 1.5:'); check_vocab(texts, local_vocab);
+
+    texts = texts.pipe(remove_links)
+
 
     # %%
 
     # Remove escaped html
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    symbols = {
-        '&quot;': '',
-        '&amp;': ' and ',
-        '&lt;': '',
-        '&gt;': '',
-    }
-    temp_dict = {}
-    for word in temp_vocab:
-        if any([rep in word for rep in symbols.keys()]):
-            new_word = word
-            for rep, to in symbols.items():
-                new_word = new_word.replace(rep, to)
-            temp_dict[word] = new_word
+    def remove_escaped_html(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        symbols = {
+            '&quot;': '',
+            '&amp;': ' and ',
+            '&lt;': '',
+            '&gt;': '',
+        }
+        temp_dict = {}
+        for word in temp_vocab:
+            if any([rep in word for rep in symbols.keys()]):
+                new_word = word
+                for rep, to in symbols.items():
+                    new_word = new_word.replace(rep, to)
+                temp_dict[word] = new_word
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove escaped html:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict, skip_check=True) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove escaped html:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_escaped_html)
+
 
     # %%
 
     # Convert urls part 2
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
+    def convert_urls2(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
 
-    for word in temp_vocab:
-        url_check = False
-        if 'file:' in word:
-            url_check = True
-        elif ('http' in word) or ('ww.' in word) or ('.htm' in word) or ('ftp' in word) or ('.php' in word) or (
-                '.aspx' in word):
-            if 'Aww' not in word:
+        for word in temp_vocab:
+            url_check = False
+            if 'file:' in word:
+                url_check = True
+            elif ('http' in word) or ('ww.' in word) or ('.htm' in word) or ('ftp' in word) or ('.php' in word) or (
+                    '.aspx' in word):
+                if 'Aww' not in word:
+                    for d_zone in url_extensions:
+                        if '.' + d_zone in word:
+                            url_check = True
+                            break
+            elif ('/' in word) and ('.' in word):
                 for d_zone in url_extensions:
-                    if '.' + d_zone in word:
+                    if '.' + d_zone + '/' in word:
                         url_check = True
                         break
-        elif ('/' in word) and ('.' in word):
-            for d_zone in url_extensions:
-                if '.' + d_zone + '/' in word:
-                    url_check = True
-                    break
 
-        if url_check:
-            temp_dict[word] = place_hold(domain_search(word), URL_TAG)
+            if url_check:
+                temp_dict[word] = place_hold(domain_search(word), URL_TAG)
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Convert urls part 2:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Convert urls part 2:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(convert_urls2)
+
 
     # %%
 
     # Normalize pictograms
     # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if len(re.compile('[a-zA-Z0-9]').sub('', word)) > 2:
-            for pict in pictograms_to_emoji:
-                if (pict in word) and (len(pict) > 2):
-                    temp_dict[word] = word.replace(pict, pictograms_to_emoji[pict])
-                elif pict == word:
-                    temp_dict[word] = pictograms_to_emoji[pict]
+    def normalize_pictograms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if len(re.compile('[a-zA-Z0-9]').sub('', word)) > 2:
+                for pict in pictograms_to_emoji:
+                    if (pict in word) and (len(pict) > 2):
+                        char_pict = pict[-1].isalpha() and pict[0].isalpha()
+                        if char_pict:
+                            pass
+                        else:
+                            temp_dict[word] = word.replace(pict, pictograms_to_emoji[pict])
+                    elif pict == word:
+                        temp_dict[word] = pictograms_to_emoji[pict]
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Normalize pictograms:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Normalize pictograms:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(normalize_pictograms)
+
 
     # %%
 
-    # Isolate emoji
-    # Global
-    global_chars_list = list(set([c for line in texts for c in line]))
-    chars = ''.join([c for c in global_chars_list if c in emoji_dict])
-    chars_dict = {ord(c): f' {c} ' for c in chars}
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Isolate emoji:'); check_vocab(texts, local_vocab)
-    if verbose: print(chars)
+    def isolate_emoji(texts):
+        global_chars_list = list(set([c for line in texts for c in line]))
+        chars = ''.join([c for c in global_chars_list if c in emoji_dict])
+        chars_dict = {ord(c): f' {c} ' for c in chars}
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Isolate emoji:'); check_vocab(texts, local_vocab)
+        if verbose: print(chars)
+        return texts
+
+
+    texts = texts.pipe(isolate_emoji)
+
 
     # %%
 
     # Duplicated dots, question marks and exclamations
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        if (Counter(word)['.'] > 1) or (Counter(word)['!'] > 1) or (Counter(word)['?'] > 1) or (Counter(word)[','] > 1):
-            if (Counter(word)['.'] > 1):
-                new_word = re.sub('\.\.+', ' . . . ', new_word)
-            if (Counter(word)['!'] > 1):
-                new_word = re.sub('\!\!+', ' ! ! ! ', new_word)
-            if (Counter(word)['?'] > 1):
-                new_word = re.sub('\?\?+', ' ? ? ? ', new_word)
-            if (Counter(word)[','] > 1):
-                new_word = re.sub('\,\,+', ' , , , ', new_word)
-            temp_dict[word] = new_word
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Duplicated Chars:'); check_vocab(texts, local_vocab);
+    def deduplicate_dots(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = word
+            if (Counter(word)['.'] > 1) or (Counter(word)['!'] > 1) or (Counter(word)['?'] > 1) or (
+                    Counter(word)[','] > 1):
+                if (Counter(word)['.'] > 1):
+                    new_word = re.sub('\.\.+', ' . . . ', new_word)
+                if (Counter(word)['!'] > 1):
+                    new_word = re.sub('\!\!+', ' ! ! ! ', new_word)
+                if (Counter(word)['?'] > 1):
+                    new_word = re.sub('\?\?+', ' ? ? ? ', new_word)
+                if (Counter(word)[','] > 1):
+                    new_word = re.sub('\,\,+', ' , , , ', new_word)
+                temp_dict[word] = new_word
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Duplicated Chars:'); check_vocab(texts, local_vocab);
+        return texts
+
+
+    texts = texts.pipe(deduplicate_dots)
+
 
     # %%
 
     # Remove underscore for spam words
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and ('_' in word):
-            temp_dict[word] = re.sub('_', '', word)
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove underscore:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def remove_underscore_spam(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and ('_' in word):
+                temp_dict[word] = re.sub('_', '', word)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove underscore:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_underscore_spam)
+
 
     # %%
 
     # Isolate spam chars repetition
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and (
-                len(Counter(word)) == 1) and (len(word) > 2):
-            temp_dict[word] = ' '.join([' ' + next(iter(Counter(word).keys())) + ' ' for i in range(1)])
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Spam chars repetition:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def isolate_spam_characters(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if (len(re.compile('[a-zA-Z0-9\-\.\,\/\']').sub('', word)) / len(word) > 0.6) and (
+                    len(Counter(word)) == 1) and (len(word) > 2):
+                temp_dict[word] = ' '.join([' ' + next(iter(Counter(word).keys())) + ' ' for i in range(1)])
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Spam chars repetition:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(isolate_spam_characters)
+
 
     # %%
 
     # Normalize pictograms part 2
     # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if len(re.compile('[a-zA-Z0-9]').sub('', word)) > 1:
-            for pict in pictograms_to_emoji:
-                if pict == word:
-                    temp_dict[word] = pictograms_to_emoji[pict]
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Normalize pictograms part 2:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def normalize_pictograms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if len(re.compile('[a-zA-Z0-9]').sub('', word)) > 1:
+                for pict in pictograms_to_emoji:
+                    if pict == word:
+                        temp_dict[word] = pictograms_to_emoji[pict]
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Normalize pictograms part 2:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(normalize_pictograms)
+
 
     # %%
 
     # Isolate brakets and quotes
-    # Global
-    chars = '()[]{}<>"'
-    chars_dict = {ord(c): f' {c} ' for c in chars}
-    texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Brackets and quotes:'); check_vocab(texts, local_vocab)
-    if verbose: print_dict(chars_dict)
+    def isolate_brackets(texts):
+        chars = '()[]{}<>"'
+        chars_dict = {ord(c): f' {c} ' for c in chars}
+        texts = texts.apply(lambda x: ' '.join([make_cleaning(i, chars_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Brackets and quotes:'); check_vocab(texts, local_vocab)
+        if verbose: print_dict(chars_dict)
+        return texts
+
+
+    texts = texts.pipe(isolate_brackets)
+
+
+    # %%
+
+    # Extract date and time
+    def extract_date_and_time(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+
+        re_inb = re.compile('[,\'"`]')
+        re_fix = re.compile('^[$£%€][-+][0-9]')
+        time_regex = re.compile('([0-9]{1,2}:[0-9]{1,2}:[0-9]{1,4})')
+        date_regex = re.compile('([0-9]{1,4}\/[0-9]{1,2}\/[0-9]{1,4})')
+        for word in temp_vocab:
+            prefilter = re_inb.sub('', word).replace(',', '.')
+            if re_fix.search(prefilter):
+                prefilter = prefilter[1] + prefilter[0] + prefilter[2:]
+
+            ## -------- Time
+            time_result = time_regex.search(prefilter)
+            if time_result:
+                prefix = prefilter[:time_result.start()]
+                suffix = prefilter[time_result.end():]
+                mpart = prefilter[time_result.start():time_result.end()]
+                temp_dict[word] = ' '.join([
+                    prefix,
+                    place_hold(str(mpart), TIME_TAG),
+                    suffix
+                ])
+                continue
+
+            ## -------- Date
+            date_result = date_regex.search(prefilter.replace('-', '/'))
+            if date_result and len(word.split('/')) == 3:
+                prefix = prefilter[:date_result.start()]
+                suffix = prefilter[date_result.end():]
+                mpart = prefilter[date_result.start():date_result.end()]
+                temp_dict[word] = ' '.join([
+                    prefix,
+                    place_hold(str(mpart), DATE_TAG),
+                    suffix
+                ])
+                continue
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Extract date and time:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(extract_date_and_time)
+
+
+    # %%
+
+    def custom_global_synonyms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_dict = {}
+        for word in temp_vocab:
+            if word in helper_custom_general_synonyms:
+                temp_dict[word] = helper_custom_general_synonyms[word]
+
+        for k, v in list(temp_dict.items()):
+            if k == v:
+                temp_dict.pop(k)
+
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Custom global word synonyms:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(custom_global_synonyms)
+
 
     # %%
 
     # Break short words
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_vocab = [k for k in temp_vocab if len(k) <= 20]
+    def break_short_words(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_vocab = [k for k in temp_vocab if len(k) <= 20]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        if '/' in word and not word.startswith('u/') and not word.startswith('r/'):
-            temp_dict[word] = re.sub('/', ' / ', word)
+        temp_dict = {}
+        for word in temp_vocab:
+            if '/' in word and not word.startswith('u/') and not word.startswith('r/'):
+                temp_dict[word] = re.sub('/', ' / ', word)
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Break long words:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Break short words:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(break_short_words)
 
 
     # %%
@@ -419,7 +592,9 @@ for chunk, file in enumerate(files):
 
         temp_dict = {}
         for word in temp_vocab:
-            if '_' in word:
+            if '_' in word and not (
+                    len(word) > 2 and word[0] in ['#', '$', '@'] and word[1:len(word) - 1].replace('\'s', '').replace(
+                '_', '').isalnum()):
                 temp_dict[word] = re.sub('_', ' ', word)
             elif '/' in word and not word.startswith('u/') and not word.startswith('r/'):
                 temp_dict[word] = re.sub('/', ' / ', word)
@@ -438,36 +613,49 @@ for chunk, file in enumerate(files):
     for i in range(3):
         texts = texts.pipe(break_long_words)
 
+
     # %%
 
     # TODO: add number parsing before
     # Diambiguate entities
     # Split words on @,# and $ to clear up ambiguities between entitites
-    symbols = '@#$'
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('@' in k or '#' in k or '$' in k)]
+    def disambiguate_entitites(texts):
+        symbols = '@#$'
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('@' in k or '#' in k or '$' in k)]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        for symbol in symbols:
-            if symbol not in word: continue
-            left, *right = word.split(symbol)
-            rightz = symbol.join(right)
-            if len(left) > 0 and len(right[0]) > 0 and right[0].isalnum():
-                temp_dict[word] = f'{left} {symbol}{rightz}'
-            break
+        temp_dict = {}
+        for word in temp_vocab:
+            for symbol in symbols:
+                if symbol not in word: continue
+                left, *right = word.split(symbol)
+                rightz = symbol.join(right)
+                if len(left) > 0 and len(right[0]) > 0 and right[0].isalnum():
+                    temp_dict[word] = f'{left} {symbol}{rightz}'
+                break
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Disambiguate entities:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Disambiguate entities:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(disambiguate_entitites)
 
 
     # %%
 
     def custom_synonyms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
         temp_dict = {}
-        for wfrom, wto in helper_custom_synonyms.items():
-            temp_dict[wfrom] = wto
+        for word in temp_vocab:
+            if word in helper_custom_synonyms:
+                temp_dict[word] = helper_custom_synonyms[word]
+
+        for k, v in list(temp_dict.items()):
+            if k == v:
+                temp_dict.pop(k)
+
         texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
         if verbose: print('#' * 10, 'Step - Custom word synonyms:'); check_vocab(texts, local_vocab);
         if verbose: print_dict(temp_dict)
@@ -475,6 +663,28 @@ for chunk, file in enumerate(files):
 
 
     texts = texts.pipe(custom_synonyms)
+
+
+    # %%
+
+    def custom_currency_synonyms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_dict = {}
+        for word in temp_vocab:
+            if word in helper_currency_synonyms:
+                temp_dict[word] = helper_currency_synonyms[word]
+
+        for k, v in list(temp_dict.items()):
+            if k == v:
+                temp_dict.pop(k)
+
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Custom currency synonyms:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(custom_currency_synonyms)
 
 
     # %%
@@ -497,8 +707,9 @@ for chunk, file in enumerate(files):
                         temp_dict[word] = place_hold(new_word[2:], USER_TAG)
                     elif word.startswith('r/'):
                         temp_dict[word] = place_hold(new_word[2:], HASH_TAG)
-                    elif word.startswith('$') and word[1:].isalpha():
-                        temp_dict[word] = place_hold(new_word[1:], CURRENCY_TAG)
+                    elif word.startswith('$') and new_word[1:].replace('_', '').isalpha():
+                        tag = CURRENCY_TAG if word[1:] in helper_currency_synonyms else HASH_TAG
+                        temp_dict[word] = place_hold(new_word[1:], tag)
         temp_dict = {k: v for k, v in temp_dict.items() if k != v}
         texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
         if verbose: print('#' * 10, 'Step - UserName and Hashtag:'); check_vocab(texts, local_vocab);
@@ -530,65 +741,80 @@ for chunk, file in enumerate(files):
 
     texts = texts.pipe(hashtag_currency_union)
 
+
     # %%
 
     # Remove ending underscore (or add quotation marks???)
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('_' in k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        if word[len(word) - 1] == '_':
-            for i in range(len(word), 0, -1):
-                if word[i - 1] != '_':
-                    new_word = word[:i]
-                    temp_dict[word] = new_word
-                    break
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove ending underscore:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def remove_ending_underscore(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('_' in k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = word
+            if word[len(word) - 1] == '_':
+                for i in range(len(word), 0, -1):
+                    if word[i - 1] != '_':
+                        new_word = word[:i]
+                        temp_dict[word] = new_word
+                        break
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove ending underscore:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_ending_underscore)
+
 
     # %%
 
     # Remove starting underscore
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('_' in k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        if word[0] == '_':
-            for i in range(len(word)):
-                if word[i] != '_':
-                    new_word = word[i:]
-                    temp_dict[word] = new_word
-                    break
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove starting underscore:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def remove_starting_underscore(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('_' in k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = word
+            if word[0] == '_':
+                for i in range(len(word)):
+                    if word[i] != '_':
+                        new_word = word[i:]
+                        temp_dict[word] = new_word
+                        break
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove starting underscore:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_starting_underscore)
+
 
     # %%
 
     # End word punctuations
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (not k[len(k) - 1].isalnum())]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        for i in range(len(word), 0, -1):
-            if word[i - 1].isnumeric() and re.compile('[$£%€]').match(word[i]):
-                break
+    def end_word_punctuations(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (not k[len(k) - 1].isalnum())]
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = word
+            for i in range(len(word), 0, -1):
+                if word[i - 1].isnumeric() and re.compile('[$£%€]').match(word[i]):
+                    break
 
-            if word[i - 1].isalnum():
-                new_word = word[:i] + ' ' + word[i:]
-                break
-        temp_dict[word] = new_word
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - End word punctuations:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+                if word[i - 1].isalnum():
+                    new_word = word[:i] + ' ' + word[i:]
+                    break
+            temp_dict[word] = new_word
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - End word punctuations:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(end_word_punctuations)
 
     # %%
 
@@ -607,7 +833,7 @@ for chunk, file in enumerate(files):
     }
 
     translate = {
-        '$': 'dollar', '£': 'pound', '%': 'percent', '€': 'euro'
+        '$': 'usd', '£': 'gbp', '%': 'percent', '€': 'eur'
     }
 
     translate_suffix = {
@@ -632,12 +858,15 @@ for chunk, file in enumerate(files):
         re_inb = re.compile('[,\'"`]')
         re_num = re.compile('^(~|\+-|±|@|=|#|\*#)?[-@+*^#:]?[$£%€]?(([.:]?[0-9])+)[$£%€]?')
         re_fix = re.compile('^[$£%€][-+][0-9]')
+        time_regex = re.compile('([0-9]{1,2}:[0-9]{1,2}:[0-9]{1,4})')
+        date_regex = re.compile('([0-9]{1,4}\/[0-9]{1,2}\/[0-9]{1,4})')
         for word in temp_vocab:
             prefilter = re_inb.sub('', word).replace(',', '.')
             if re_fix.search(prefilter):
                 prefilter = prefilter[1] + prefilter[0] + prefilter[2:]
-            result = re_num.search(prefilter)
 
+            ## ----- Various other numbers
+            result = re_num.search(prefilter)
             if result and result.pos == 0:
                 # Process combined numbers / ranges in next iteration
                 if '-' in word and not word.startswith('-') and not word.startswith('+-'):
@@ -689,213 +918,277 @@ for chunk, file in enumerate(files):
 
     # Clean up numbers
     for i in range(4):
-        texts.pipe(serialize_numbers)
-        # texts = texts.pipe(serialize_numbers)
+        texts = texts.pipe(serialize_numbers)
 
     # %%
+
     # Extract entities again
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(disambiguate_entitites) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
+
+
     # %%
 
     # Start word punctuations
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (not k[0].isalnum() and k[0] not in ['@', '#', '$'])]
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = word
-        for i in range(len(word)):
-            if word[i].isalnum() or word[i] in ['#', '@', '$']:
-                new_word = word[:i] + ' ' + word[i:]
-                break
-        temp_dict[word] = new_word
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    # texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i,temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Start word punctuations:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def start_word_punctuations(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if
+                      (check_replace(k)) and (not k[0].isalnum() and k[0] not in ['@', '#', '$'])]
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = word
+            for i in range(len(word)):
+                if word[i].isalnum() or word[i] in ['#', '@', '$']:
+                    new_word = word[:i] + ' ' + word[i:]
+                    break
+            temp_dict[word] = new_word
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Start word punctuations:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(start_word_punctuations)
 
     # %%
 
     # Extract entities again and numbers
-    texts = texts.pipe(serialize_numbers)
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(disambiguate_entitites) \
+        .pipe(serialize_numbers) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
+
 
     # %%
 
     # Find and replace acronims
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if (Counter(word)['.'] > 1) and (check_replace(word)):
-            if (domain_search(word) != '') and (('www' in word) or (Counter(word)['/'] > 3)):
-                temp_dict[word] = place_hold('url ' + domain_search(word))
-            else:
-                if (re.compile('[\.\,]').sub('', word) in local_vocab) and (
-                        len(re.compile('[0-9\.\,\-\/\:]').sub('', word)) > 0):
-                    temp_dict[word] = place_hold(re.compile('[\.\,]').sub('', word))
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Find and replace acronims:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def find_replace_acronyms(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if (Counter(word)['.'] > 1) and (check_replace(word)):
+                if (domain_search(word) != '') and (('www' in word) or (Counter(word)['/'] > 3)):
+                    temp_dict[word] = place_hold('url ' + domain_search(word))
+                else:
+                    if (re.compile('[\.\,]').sub('', word) in local_vocab) and (
+                            len(re.compile('[0-9\.\,\-\/\:]').sub('', word)) > 0):
+                        temp_dict[word] = place_hold(re.compile('[\.\,]').sub('', word))
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Find and replace acronims:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(find_replace_acronyms)
+
 
     # %%
 
     # Apply spellchecker for contractions
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ("'" in k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if word in helper_contractions:
-            temp_dict[word] = helper_contractions[word]  # place_hold(helper_contractions[word])
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Contractions:'); check_vocab(texts, local_vocab)
-    if verbose: print_dict(temp_dict)
+    def apply_spellchecker_contractions(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ("'" in k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if word in helper_contractions:
+                temp_dict[word] = helper_contractions[word]  # place_hold(helper_contractions[word])
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Contractions:'); check_vocab(texts, local_vocab)
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(apply_spellchecker_contractions)
+
 
     # %%
 
     # Remove 's (DO WE NEED TO REMOVE IT???)
-    # Local
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {k: k[:-2] for k in temp_vocab if (check_replace(k)) and (k.lower()[-2:] == "'s")}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Remove "s:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def remove_comma_s(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {k: k[:-2] for k in temp_vocab if (check_replace(k)) and (k.lower()[-2:] == "'s")}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Remove "s:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_comma_s)
+
 
     # %%
 
-    # Convert backslash
-    # Global
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('\\' in k)]
-    temp_dict = {k: re.sub('\\\\+', ' / ', k) for k in temp_vocab}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Convert backslash:'); check_vocab(texts, local_vocab)
-    if verbose: print_dict(temp_dict)
+    def convert_backslash(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and ('\\' in k)]
+        temp_dict = {k: re.sub('\\\\+', ' / ', k) for k in temp_vocab}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Convert backslash:'); check_vocab(texts, local_vocab)
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(convert_backslash)
 
     # %%
 
     # Extract entities again and numbers
-    texts = texts.pipe(serialize_numbers)
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(disambiguate_entitites) \
+        .pipe(serialize_numbers) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
+
 
     # %%
 
     # Try remove duplicated chars (not sure about this!!!!!). TODO check fist against vocab?
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
+    def remove_duplicated_character(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
 
-    temp_dict = {}
-    temp_vocab_dup = []
+        temp_dict = {}
+        temp_vocab_dup = []
 
-    for word in temp_vocab:
-        if not word.isalpha():
-            continue
-        temp_vocab_dup.append(''.join(ch for ch, _ in itertools.groupby(word)))
-    temp_vocab_dup = set(temp_vocab_dup)
-    temp_vocab_dup = temp_vocab_dup.difference(temp_vocab_dup.difference(set(local_vocab)))
+        for word in temp_vocab:
+            if not word.isalpha():
+                continue
+            temp_vocab_dup.append(''.join(ch for ch, _ in itertools.groupby(word)))
+        temp_vocab_dup = set(temp_vocab_dup)
+        temp_vocab_dup = temp_vocab_dup.difference(temp_vocab_dup.difference(set(local_vocab)))
 
-    for word in temp_vocab:
-        new_word = ''.join(ch for ch, _ in itertools.groupby(word))
-        if new_word in temp_vocab_dup:
-            temp_dict[word] = new_word
-    temp_dict = {k: v for k, v in temp_dict.items() if (k != v) and (v in local_vocab)}
+        for word in temp_vocab:
+            new_word = ''.join(ch for ch, _ in itertools.groupby(word))
+            if new_word in temp_vocab_dup:
+                temp_dict[word] = new_word
+        temp_dict = {k: v for k, v in temp_dict.items() if (k != v) and (v in local_vocab)}
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Dup chars (with vocab check):'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Dup chars (with vocab check):'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(remove_duplicated_character)
 
     # %%
+
     # Extract entities again and numbers
-    texts = texts.pipe(serialize_numbers)
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(disambiguate_entitites) \
+        .pipe(serialize_numbers) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
 
+
     # %%
 
-    # Isolate numbers
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
-    temp_dict = {}
-    for word in temp_vocab:
-        if re.compile('[a-zA-Z]').sub('', word) == word:
-            if re.compile('[0-9]').sub('', word) != word:
-                temp_dict[word] = word
+    def isolate_numbers(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
+        temp_dict = {}
+        for word in temp_vocab:
+            if re.compile('[a-zA-Z]').sub('', word) == word:
+                if re.compile('[0-9]').sub('', word) != word:
+                    temp_dict[word] = word
 
-    global_chars_list = list(set([c for line in temp_dict for c in line]))
-    chars = ''.join([c for c in global_chars_list if not c.isdigit()])
-    chars_dict = {ord(c): f' {c} ' for c in chars}
-    temp_dict = {k: place_hold(k) for k in temp_dict}
+        global_chars_list = list(set([c for line in temp_dict for c in line]))
+        chars = ''.join([c for c in global_chars_list if not c.isdigit()])
+        chars_dict = {ord(c): f' {c} ' for c in chars}
+        temp_dict = {k: place_hold(k) for k in temp_dict}
 
-    # texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i,temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Isolate numbers:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        # texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i,temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Isolate numbers:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(isolate_numbers)
+
 
     # %%
 
     # Join dashes
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
+    def join_dashes(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        temp_dict[word] = re.sub('\-\-+', '-', word)
-    temp_dict = {k: v for k, v in temp_dict.items() if k != v}
+        temp_dict = {}
+        for word in temp_vocab:
+            temp_dict[word] = re.sub('\-\-+', '-', word)
+        temp_dict = {k: v for k, v in temp_dict.items() if k != v}
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Join dashes:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Join dashes:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(join_dashes)
+
 
     # %%
 
     # Try join word (Sloooow)
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (Counter(k)['-'] > 1)]
+    def join_word_letters(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (check_replace(k)) and (Counter(k)['-'] > 1)]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = ''.join(['' if c in '-' else c for c in word])
-        if (new_word in local_vocab) and (len(new_word) > 3):
-            temp_dict[word] = new_word
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = ''.join(['' if c in '-' else c for c in word])
+            if (new_word in local_vocab) and (len(new_word) > 3):
+                temp_dict[word] = new_word
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Try Split word:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Try Split word:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(join_word_letters)
+
 
     # %%
 
+    # TODO: _ should become ' ' and we should preserve numbers or hashtags
     # Try Split word
-    # Local (only unknown words)
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
+    def split_words(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        if len(re.compile('[a-zA-Z0-9\*]').sub('', word)) > 0:
-            chars = re.compile('[a-zA-Z0-9\*]').sub('', word)
-            temp_dict[word] = ''.join([' ' + c + ' ' if c in chars else c for c in word])
+        temp_dict = {}
+        for word in temp_vocab:
+            if len(re.compile('[a-zA-Z0-9\*]').sub('', word)) > 0:
+                chars = re.compile('[a-zA-Z0-9\*]').sub('', word)
+                temp_dict[word] = ''.join([' ' + c + ' ' if c in chars else c for c in word])
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Try Split word:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Try Split word:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(split_words)
 
 
     # %%
@@ -913,61 +1206,84 @@ for chunk, file in enumerate(files):
         return word
 
 
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if check_replace(k)]
+    def convert_leet_words(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if check_replace(k)]
 
-    temp_dict = {}
-    for word in temp_vocab:
-        new_word = convert_leet(word)
-        if (new_word != word):
-            if (len(word) > 2) and (new_word in local_vocab):
-                temp_dict[word] = new_word
+        temp_dict = {}
+        for word in temp_vocab:
+            new_word = convert_leet(word)
+            if (new_word != word):
+                if (len(word) > 2) and (new_word in local_vocab):
+                    temp_dict[word] = new_word
 
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - L33T (with vocab check):'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - L33T (with vocab check):'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(convert_leet_words)
 
     # %%
+
     # Extract entities again and numbers
-    texts = texts.pipe(serialize_numbers)
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(serialize_numbers) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
+
 
     # %%
 
     # Remove placeholders
-    # Global
-    temp_vocab = list(set([c for line in texts for c in line.split()]))
-    temp_vocab = [k for k in temp_vocab if (not check_replace(k) and k.startswith(WPLACEHOLDER))]
-    temp_dict = {}
-    for word in temp_vocab:
-        temp_dict[word] = re.sub('___', ' ', word[17:-1])
-    texts = texts.apply(lambda x: ' '.join([temp_dict.get(i, i) for i in x.split()]))
-    texts = texts.apply(lambda x: ' '.join([i for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Open Holded words:'); check_vocab(texts, local_vocab)
+    def remove_placeholders(texts):
+        temp_vocab = list(set([c for line in texts for c in line.split()]))
+        temp_vocab = [k for k in temp_vocab if (not check_replace(k) and k.startswith(WPLACEHOLDER))]
+        temp_dict = {}
+        for word in temp_vocab:
+            temp_dict[word] = re.sub('___', ' ', word[17:-1])
+        texts = texts.apply(lambda x: ' '.join([temp_dict.get(i, i) for i in x.split()]))
+        texts = texts.apply(lambda x: ' '.join([i for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Open Holded words:'); check_vocab(texts, local_vocab)
+        return texts
+
+
+    texts = texts.pipe(remove_placeholders)
+
 
     # %%
 
     # Search multiple form
     # Local | example -> flashlights / flashlight -> False / True
-    temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
-    temp_vocab = [k for k in temp_vocab if (k[-1:] == 's') and (len(k) > 4)]
-    temp_dict = {k: k[:-1] for k in temp_vocab if (k[:-1] in local_vocab)}
-    texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
-    if verbose: print('#' * 10, 'Step - Multiple form:'); check_vocab(texts, local_vocab);
-    if verbose: print_dict(temp_dict)
+    def search_multiple_form(texts):
+        temp_vocab = check_vocab(texts, local_vocab, response='unknown_list')
+        temp_vocab = [k for k in temp_vocab if (k[-1:] == 's') and (len(k) > 4)]
+        temp_dict = {k: k[:-1] for k in temp_vocab if (k[:-1] in local_vocab)}
+        texts = texts.apply(lambda x: ' '.join([make_dict_cleaning(i, temp_dict) for i in x.split()]))
+        if verbose: print('#' * 10, 'Step - Multiple form:'); check_vocab(texts, local_vocab);
+        if verbose: print_dict(temp_dict)
+        return texts
+
+
+    texts = texts.pipe(search_multiple_form)
 
     # %%
+
     # Extract entities again and numbers
-    texts = texts.pipe(serialize_numbers)
     texts = texts \
+        .pipe(custom_global_synonyms) \
+        .pipe(serialize_numbers) \
         .pipe(custom_synonyms) \
+        .pipe(custom_currency_synonyms) \
         .pipe(extract_entities) \
         .pipe(hashtag_currency_union)
 
     # %%
+
     # Cut away non english tweets
     model = fasttext.load_model('../../data/kaggle/lid.176.ftz')
 
@@ -986,6 +1302,5 @@ for chunk, file in enumerate(files):
     data = data[mask]
     if verbose: print('#' * 10, 'Step - Language datection:'); check_vocab(texts, local_vocab);
 
-    # %%
     data['text'] = texts
     data.to_parquet(os.path.join(OUTPUT_PATH, f'part_{chunk}.parquet'))
