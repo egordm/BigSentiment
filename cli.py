@@ -1,6 +1,7 @@
 import click
 
 from scraping.base import scraper
+from trading.cli import trading
 
 
 @click.group()
@@ -17,6 +18,7 @@ class CatchAllExceptions(click.Group):
 
 
 cli.add_command(scraper)
+cli.add_command(trading)
 
 if __name__ == '__main__':
     cli()
