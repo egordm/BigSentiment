@@ -13,6 +13,9 @@
 * https://github.com/VinAIResearch/BERTweet
 * https://github.com/huggingface/transformers/issues/1413
 * https://colab.research.google.com/drive/1fXFH7g4nfbxBo42icI4ZMy-0TAGAxc2i
+  
+* https://github.com/cybo1112/cantoformer/blob/2c519ef9a703c382b8f0d39c40f34bbf59a47ca9/.ipynb_checkpoints/pretrain_tpu-checkpoint.ipynb
+* https://github.com/huggingface/transformers/blob/30b2dbbba6918ac6540b6a1758b7ee19f0ac969c/examples/run_efficient_pretraining.py
 
 ## Citation / Papers
 * https://www.frontiersin.org/articles/10.3389/fphy.2019.00098/full
