@@ -131,5 +131,5 @@ trainer = Trainer(
 )
 
 # Training
-trainer.train(model_path=model_path)
+trainer.train()
 trainer.save_model()
