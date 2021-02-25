@@ -159,3 +159,6 @@ cython_debug/
 /dev/instances/*
 !/dev/instances/.gitkeep
 /kaggle
+/cache
+/wandb
+/runs

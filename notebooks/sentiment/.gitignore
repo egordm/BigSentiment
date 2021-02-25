@@ -1,3 +1,4 @@
 /cache
 /runs
 /tmp_trainer
+/wandb
