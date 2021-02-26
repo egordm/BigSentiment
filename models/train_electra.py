@@ -63,7 +63,6 @@ dataset = load_dataset("text", data_files={
     # 'validate': VALIDATE_DS
 }, cache_dir='./cache')
 
-
 # Preprocess / Pre-tokenize the dataset
 def tokenize_function(input):
     res = tokenizer(
@@ -75,6 +74,7 @@ def tokenize_function(input):
 
 
 tokenized_datasets = dataset.shuffle().map(tokenize_function, batched=True)
+eval_dataset = tokenized_datasets['train'].train_test_split(test_size=100)['test']
 
 # Build the model
 generator_config = ElectraConfig(
@@ -118,7 +118,8 @@ arguments = TrainingArguments(
     report_to=['wandb'],
     per_device_train_batch_size=train_batch_size,
     per_device_eval_batch_size=eval_batch_size,
-    run_name='pretrain_electra'
+    run_name='pretrain_electra',
+    dataloader_num_workers=2,
 )
 
 # Initialize our Trainer
