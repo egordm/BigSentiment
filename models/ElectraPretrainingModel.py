@@ -80,9 +80,7 @@ class ElectraPretrainingModel(torch.nn.Module):
         total_loss = generator_loss * self.loss_weights[0] + discriminator_loss * self.loss_weights[1]
 
         # Log some extras
-        u = 0
-        # wandb.log({'discriminator_loss': discriminator_loss, 'generator_loss': generator_loss, 'total_loss': total_loss})
-        print(total_loss)
+        wandb.log({'discriminator_loss': discriminator_loss, 'generator_loss': generator_loss, 'total_loss': total_loss})
         return (
             total_loss,
             (discriminator_predictions, generator_output),
