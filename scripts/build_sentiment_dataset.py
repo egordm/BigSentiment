@@ -2,10 +2,9 @@ import os
 import pathlib
 import re
 
-import datasets
 import emoji
 import pandas as pd
-from datasets import load_dataset, DatasetDict
+from datasets import DatasetDict, load_dataset
 from transformers import ElectraTokenizerFast
 
 from utils.datasets import ensure_dataset, load_helper_file
@@ -48,7 +47,7 @@ def process_text(text):
         if word in emoji_dict:
             words[i] = '[EMOJI]'
             continue
-    return {'text': ' '.join(words)}
+    return ' '.join(words)
 
 
 # Load the curate vocabulary into the tokenizer
@@ -58,26 +57,26 @@ tokenizer.add_special_tokens({
     'additional_special_tokens': list(tokenizer_custom.values())
 })
 
+# Preprocess the initial data
+OUTPUT_PATH = "../data/bitcoin_twitter_labeled_normalized_tokenized/"
+ensure_dataset(OUTPUT_PATH, delete=False)
+files = pathlib.Path("../data/bitcoin_twitter_labeled_normalized/").glob("part_*.parquet")
+for chunk, file in enumerate(files):
+    print(f'Processing {chunk}')
+    df = pd.read_parquet(file)
+    features = [str(f) for f in df.columns if f.startswith('feat')]
+    df['text'] = df['text'].map(process_text)
+    df['input_ids'] = df['text'].map(lambda text: tokenizer.encode(text))
+    df['labels'] = df.apply(lambda x: list(x[features].to_numpy()), axis=1)
+    df.drop(columns=['text', 'follower_count', 'retweet_count', *features], inplace=True)
+    df.to_parquet(os.path.join(OUTPUT_PATH, f"part_{chunk}.parquet"))
+
 # Load labelled data
 dataset = load_dataset(
     './scripts/ds/parquet.py',
-    data_files=list(pathlib.Path("../data/bitcoin_twitter_labeled/").glob("part_*.parquet")),
+    data_files=list(pathlib.Path(OUTPUT_PATH).glob("part_*.parquet")),
     cache_dir='./cache',
-    keep_in_memory=True,
 )
-dataset = dataset.sort('created_at', keep_in_memory=True)
-features = list(dataset['train'].features.keys())
-# Filter away all the records with no values in sentiment columns
-dataset = dataset.filter(
-    lambda *x: all(x), input_columns=[f for f in features if f.startswith('feat')],
-    keep_in_memory=True,
-    batch_size=100000
-)
-# Apply text preprocessing
-dataset = dataset.map(process_text, input_columns=['text'], keep_in_memory=True)
-# PreTokenize the text
-if pretokenize:
-    dataset = dataset.map(lambda text: {'input_ids': tokenizer.encode(text)}, input_columns=['text'], keep_in_memory=True)
 # Shuffle the dataset thoroughly
 dataset = dataset.shuffle(seed=42)
 # Split off the training dataset
@@ -91,5 +90,32 @@ train_test_valid_dataset = DatasetDict({
     'valid': test_validate_dataset['train']
 })
 ensure_dataset('../data/sentiment_dataset')
-for k, v in train_test_valid_dataset.items():
-    v.to_parquet(os.path.join('../data/sentiment_dataset', f'{k}.parquet'))
+PARTITONS = [12, 2, 2]
+for n_partitons, (k, v) in zip(PARTITONS, train_test_valid_dataset.items()):
+    path = os.path.join('../data/sentiment_dataset', f'{k}')
+    os.makedirs(path, exist_ok=True)
+    print(f'Processing: {k}')
+    df = v.to_parquet(path, n_partitons)
+    uu = 0
+
+
+#  def to_parquet(
+#      self,
+#      path_or_buf: Union[PathLike, BinaryIO],
+#      n_partitions: int = 1,
+#      **to_parquet_kwargs,
+# ):
+#      """Exports the dataset to parquet
+#
+#      Args:
+#          path_or_buf (``PathLike`` or ``FileOrBuffer``): Either a path to a file or a BinaryIO.
+#          to_parquet_kwargs: Parameters to pass to arrow's :func:`arrows.parquet.write_table`
+#      """
+#      step_size = int(np.ceil(len(self) / float(n_partitions)))
+#      for from_range in tqdm(range(0, len(self), step_size)):
+#          to_range = np.minimum(from_range + step_size, len(self))
+#          pq.write_to_dataset(query_table(
+#              pa_table=self._data,
+#              key=slice(from_range, to_range),
+#              indices=self._indices.column(0) if self._indices is not None else None,
+#          ), path_or_buf, **to_parquet_kwargs)

@@ -4,6 +4,7 @@
 /bitcoin_twitter_processed
 /bitcoin_twitter_labeled
 /bitcoin_twitter_labeled_normalized
+/bitcoin_twitter_labeled_normalized_tokenized
 /kaggle
 /cryptodata
 /bitcoin_twitter_corpus
