@@ -51,9 +51,9 @@ class RollingEpisodicObserver(Observer):
         ] if renderer_feed else []
 
         self.feed = DataFeed([
-            internal_group,
-            external_group
-        ] + additional_groups)
+                                 internal_group,
+                                 external_group
+                             ] + additional_groups)
         self.feed = self.feed.attach(portfolio)
 
         # Parameters
@@ -145,3 +145,8 @@ class RollingEpisodicObserver(Observer):
         self.warmup()
         self.stop = False
         self.end_dt = None
+
+
+class FlipFlopObserver(Observer):
+    # TODO: implement
+    pass

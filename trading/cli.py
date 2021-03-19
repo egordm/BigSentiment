@@ -1,6 +1,7 @@
 import click
 
-from trading.runners import test_runner
+from trading.prepare import prepare
+from trading.experiment import experiment
 
 
 @click.group()
@@ -8,4 +9,5 @@ def trading():
     pass
 
 
-trading.add_command(test_runner)
+trading.add_command(prepare)
+trading.add_command(experiment)

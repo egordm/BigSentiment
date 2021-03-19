@@ -1,6 +1,12 @@
 import logging
+import os
+import pathlib
 import random
 import time
+from collections import defaultdict
+from typing import List
+
+import pandas as pd
 
 import click
 from tensortrade.agents import DQNAgent, A2CAgent
@@ -8,6 +14,7 @@ from tensortrade.data.cdd import CryptoDataDownload
 from tensortrade.env.default import actions, rewards, observers, stoppers, renderers, informers
 from tensortrade.env.default.actions import SimpleOrders
 from tensortrade.env.default.observers import ObservationHistory
+from tensortrade.env.default.rewards import SimpleProfit
 from tensortrade.env.generic import TradingEnv
 from tensortrade.feed import Stream, DataFeed
 from tensortrade.oms.exchanges import Exchange
@@ -15,48 +22,37 @@ from tensortrade.oms.instruments import USD, BTC
 from tensortrade.oms.services.execution.simulated import execute_order
 from tensortrade.oms.wallets import Portfolio, Wallet
 import tensortrade.env.default as default
+import datetime as dt
 
+from trading.env.datasource import LocalDatasource
+from trading.env.instruments import rsi, macd, percdiff
 from trading.env.observers import FastObservationHistory, RollingEpisodicObserver
-
-
-def rsi(price: Stream[float], period: float) -> Stream[float]:
-    r = price.diff()
-    upside = r.clamp_min(0).abs()
-    downside = r.clamp_max(0).abs()
-    rs = upside.ewm(alpha=1 / period).mean() / downside.ewm(alpha=1 / period).mean()
-    return 100 * (1 - (1 + rs) ** -1)
-
-
-def macd(price: Stream[float], fast: float, slow: float, signal: float) -> Stream[float]:
-    fm = price.ewm(span=fast, adjust=False).mean()
-    sm = price.ewm(span=slow, adjust=False).mean()
-    md = fm - sm
-    signal = md - md.ewm(span=signal, adjust=False).mean()
-    return signal
+from trading.env.renderers import PlotlyCustomChart
+from utils.datasets import DATASET_DIR
 
 
 @click.command()
-def test_runner():
+def experiment():
     logger = logging.getLogger()
     logger.setLevel(logging.WARNING)
-    print('hello')
 
-    cdd = CryptoDataDownload()
-    data = cdd.fetch("Bitstamp", "USD", "BTC", "1h")
+    # Load dataset
+    datasource = LocalDatasource()
+    data = datasource.fetch('bitstamp', 'btcusd')
     print(data.tail())
 
     features = []
     for c in data.columns[1:]:
         s = Stream.source(list(data[c]), dtype="float").rename(data[c].name)
         features += [s]
+
     cp = Stream.select(features, lambda s: s.name == "close")
-    features = [
-        Stream.source(list(data['date']), dtype="datetime64").rename('timestamp'),
-        cp.log().diff().rename("lr"),
+    feed = DataFeed([
+        Stream.source(list(data['timestamp']), dtype="datetime64").rename('timestamp'),
+        percdiff(cp).rename("pd"),
         rsi(cp, period=20).rename("rsi"),
         macd(cp, fast=10, slow=50, signal=5).rename("macd")
-    ]
-    feed = DataFeed(features)
+    ])
     feed.compile()
 
     bitstamp = Exchange("bitstamp", service=execute_order)(
@@ -66,27 +62,20 @@ def test_runner():
         Wallet(bitstamp, 10000 * USD),
         Wallet(bitstamp, 0 * BTC)
     ])
-    renderer_feed = DataFeed([
-        Stream.source(list(data["date"])).rename("date"),
-        Stream.source(list(data["open"]), dtype="float").rename("open"),
-        Stream.source(list(data["high"]), dtype="float").rename("high"),
-        Stream.source(list(data["low"]), dtype="float").rename("low"),
-        Stream.source(list(data["close"]), dtype="float").rename("close"),
-        Stream.source(list(data["volume"]), dtype="float").rename("volume")
-    ])
+    renderer_feed = DataFeed(datasource.renderer_transform(data))
 
-    action_scheme = SimpleOrders(trade_sizes=2)
-    reward_scheme = rewards.get('risk-adjusted')
+    action_scheme = SimpleOrders(trade_sizes=1)
     action_scheme.portfolio = portfolio
+    reward_scheme = SimpleProfit()
 
     observer = RollingEpisodicObserver(
         portfolio=portfolio,
         feed=feed,
         renderer_feed=renderer_feed,
         window_size=20,
+        episode_duration=dt.timedelta(days=7),
         min_periods=None
     )
-
     stopper = stoppers.MaxLossStopper(
         max_allowed_loss=0.5
     )
@@ -97,10 +86,18 @@ def test_runner():
         stopper=stopper,
         informer=informers.TensorTradeInformer(),
         # renderer=renderers.EmptyRenderer()
-        renderer=renderers.PlotlyTradingChart()
+        renderer=PlotlyCustomChart()
     )
-    agent = A2CAgent(env)
-    agent.train(n_steps=2000, n_episodes=10)
+    # agent = A2CAgent(env)
+    agent = DQNAgent(env)
+    agent.train(n_steps=120, n_episodes=1, render_interval=None)
+    #
+    # done = False
+    # env.reset()
+    # while not done:
+    #     action = env.action_space.sample()
+    #     obs, reward, done, info = env.step(action)
+    #
+    # trades = portfolio.ledger.as_frame()
 
-    i = 0
-    pass
+    print(portfolio.ledger.as_frame().head(7))

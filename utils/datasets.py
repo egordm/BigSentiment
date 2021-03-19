@@ -12,6 +12,9 @@ import psutil
 import torch
 
 
+DATASET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../data'))
+
+
 def batched(cursor, batch_size):
     batch = []
     for doc in cursor:

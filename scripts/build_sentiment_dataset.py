@@ -65,6 +65,8 @@ for chunk, file in enumerate(files):
     print(f'Processing {chunk}')
     df = pd.read_parquet(file)
     features = [str(f) for f in df.columns if f.startswith('feat')]
+    print(features)
+    exit(1)
     df['text'] = df['text'].map(process_text)
     df['input_ids'] = df['text'].map(lambda text: tokenizer.encode(text))
     df['labels'] = df.apply(lambda x: list(x[features].to_numpy()), axis=1)
