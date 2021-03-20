@@ -128,7 +128,6 @@ class A2CAgent(Agent):
         for reward, done in zip(rewards[::-1], dones[::-1]):
             exp_weighted_return = reward + discount_factor * exp_weighted_return * (1 - int(done))
             returns += [exp_weighted_return]
-
         returns = returns[::-1]
 
         with tf.GradientTape() as tape:
@@ -162,14 +161,14 @@ class A2CAgent(Agent):
             callback: callable = None,
             **kwargs
     ) -> float:
-        batch_size: int = kwargs.get('batch_size', 128)
+        batch_size: int = kwargs.get('batch_size', 4096)
         discount_factor: float = kwargs.get('discount_factor', 0.9999)
         learning_rate: float = kwargs.get('learning_rate', 0.0001)
         eps_start: float = kwargs.get('eps_start', 0.9)
         eps_end: float = kwargs.get('eps_end', 0.05)
-        eps_decay_steps: int = kwargs.get('eps_decay_steps', 200)
+        eps_decay_steps: int = kwargs.get('eps_decay_steps', 200000)
         entropy_c: int = kwargs.get('entropy_c', 0.0001)
-        memory_capacity: int = kwargs.get('memory_capacity', 1000)
+        memory_capacity: int = kwargs.get('memory_capacity', 4096)
 
         wandb.config.agent = 'A2C'
         memory = ReplayMemory(memory_capacity, transition_type=A2CTransition)
@@ -188,12 +187,13 @@ class A2CAgent(Agent):
             episode_reward = 0
             episode_steps = 0
             episode_trades = 0
+            threshold = None
 
             print('====      EPISODE ID ({}/{}): {}      ===='.format(episode + 1, n_episodes, self.env.episode_id))
             while not done:
                 threshold = eps_end + (eps_start - eps_end) * np.exp(-steps_done / eps_decay_steps)
                 action = self.get_action(state, threshold=threshold)
-                next_state, reward, done, _ = self.env.step(action)
+                next_state, reward, done, info = self.env.step(action)
 
                 value = self.critic_network(state[None, :], training=False)
                 value = tf.squeeze(value, axis=-1)
@@ -203,24 +203,29 @@ class A2CAgent(Agent):
                 state = next_state
                 episode_reward += reward
                 episode_steps += 1
+                steps_done += 1
 
                 if len(memory) < batch_size:
                     continue
 
-                self._apply_gradient_descent(memory, batch_size, learning_rate,  discount_factor, entropy_c)
+                if (steps_done % batch_size) == 0:
+                    self._apply_gradient_descent(memory, batch_size, learning_rate,  discount_factor, entropy_c)
+
                 if n_steps and steps_done >= n_steps:
                     done = True
                     stop_training = True
 
             is_checkpoint = save_every and episode % save_every == 0
             total_reward += episode_reward
-            steps_done += episode_steps
 
             # Log to wandb
             wandb.log(dict(
                 episode=episode,
                 episode_steps=episode_steps,
-                episode_reward=episode_reward
+                episode_reward=episode_reward,
+                epsilon=threshold,
+                n_trades=len(self.env.action_scheme.broker.trades),
+                net_worth=info['net_worth']
             ))
 
             # Save periodically

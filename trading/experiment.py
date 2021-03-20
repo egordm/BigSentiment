@@ -1,6 +1,9 @@
+import cProfile
+import io
 import logging
 import os
 import pathlib
+import pstats
 import random
 import time
 from collections import defaultdict
@@ -65,7 +68,7 @@ def experiment():
     ])
     renderer_feed = DataFeed(datasource.renderer_transform(data))
 
-    action_scheme = SimpleOrders(trade_sizes=1)
+    action_scheme = SimpleOrders(trade_sizes=2)
     action_scheme.portfolio = portfolio
     reward_scheme = SimpleProfit()
 
@@ -74,7 +77,7 @@ def experiment():
         feed=feed,
         renderer_feed=renderer_feed,
         window_size=60,
-        episode_duration=dt.timedelta(days=7),
+        episode_duration=dt.timedelta(days=2),
         min_periods=None
     )
     stopper = stoppers.MaxLossStopper(
@@ -90,6 +93,6 @@ def experiment():
         renderer=PlotlyCustomChart()
     )
     agent = A2CAgent(env)
-    agent.train(n_steps=None, n_episodes=100, render_interval=None)
+    agent.train(n_steps=None, n_episodes=10000, render_interval=None)
 
     print(portfolio.ledger.as_frame().head(7))
