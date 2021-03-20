@@ -9,7 +9,8 @@ from typing import List
 import pandas as pd
 
 import click
-from tensortrade.agents import DQNAgent, A2CAgent
+import wandb
+# from tensortrade.agents import DQNAgent, A2CAgent
 from tensortrade.data.cdd import CryptoDataDownload
 from tensortrade.env.default import actions, rewards, observers, stoppers, renderers, informers
 from tensortrade.env.default.actions import SimpleOrders
@@ -21,24 +22,24 @@ from tensortrade.oms.exchanges import Exchange
 from tensortrade.oms.instruments import USD, BTC
 from tensortrade.oms.services.execution.simulated import execute_order
 from tensortrade.oms.wallets import Portfolio, Wallet
-import tensortrade.env.default as default
 import datetime as dt
 
+from trading.agents.a2c_agent import A2CAgent
 from trading.env.datasource import LocalDatasource
 from trading.env.instruments import rsi, macd, percdiff
-from trading.env.observers import FastObservationHistory, RollingEpisodicObserver
+from trading.env.observers import RollingEpisodicObserver
 from trading.env.renderers import PlotlyCustomChart
-from utils.datasets import DATASET_DIR
 
 
 @click.command()
 def experiment():
     logger = logging.getLogger()
     logger.setLevel(logging.WARNING)
+    wandb.init(project='crypto_rl')
 
     # Load dataset
     datasource = LocalDatasource()
-    data = datasource.fetch('bitstamp', 'btcusd')
+    data = datasource.fetch('bitstamp', 'btcusd', '5m')
     print(data.tail())
 
     features = []
@@ -72,7 +73,7 @@ def experiment():
         portfolio=portfolio,
         feed=feed,
         renderer_feed=renderer_feed,
-        window_size=20,
+        window_size=60,
         episode_duration=dt.timedelta(days=7),
         min_periods=None
     )
@@ -88,16 +89,7 @@ def experiment():
         # renderer=renderers.EmptyRenderer()
         renderer=PlotlyCustomChart()
     )
-    # agent = A2CAgent(env)
-    agent = DQNAgent(env)
-    agent.train(n_steps=120, n_episodes=1, render_interval=None)
-    #
-    # done = False
-    # env.reset()
-    # while not done:
-    #     action = env.action_space.sample()
-    #     obs, reward, done, info = env.step(action)
-    #
-    # trades = portfolio.ledger.as_frame()
+    agent = A2CAgent(env)
+    agent.train(n_steps=None, n_episodes=100, render_interval=None)
 
     print(portfolio.ledger.as_frame().head(7))

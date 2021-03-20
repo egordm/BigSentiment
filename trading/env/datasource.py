@@ -14,13 +14,13 @@ class LocalDatasource:
     def __init__(self) -> None:
         super().__init__()
         files = pathlib.Path(os.path.join(DATASET_DIR, 'market')).glob("*.parquet")
-        self.dataset = defaultdict(lambda: {})
+        self.dataset = defaultdict(lambda: defaultdict(lambda: {}))
         for file in files:
-            source, pair = os.path.basename(file).split('.')[0].split('-')
-            self.dataset[source][pair] = file
+            source, pair, timestep = os.path.basename(file).split('.')[0].split('-')
+            self.dataset[source][pair][timestep] = file
 
-    def fetch(self, source: str, pair: str) -> pd.DataFrame:
-        return pd.read_parquet(self.dataset[source][pair])
+    def fetch(self, source: str, pair: str, timestep: str) -> pd.DataFrame:
+        return pd.read_parquet(self.dataset[source][pair][timestep])
 
     def renderer_transform(self, data) -> List['Stream']:
         return [

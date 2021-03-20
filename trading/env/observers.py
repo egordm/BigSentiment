@@ -2,6 +2,7 @@ from typing import List
 
 import datetime as dt
 import numpy as np
+import wandb
 
 from gym.spaces import Box, Space
 from random import randrange
@@ -80,6 +81,8 @@ class RollingEpisodicObserver(Observer):
         self.renderer_history = []
         self.stop = False
         self.end_dt = None
+        self.first_observation = None
+        self.epoch = 0
         self.feed.reset()
         self.warmup()
 
@@ -110,6 +113,9 @@ class RollingEpisodicObserver(Observer):
         # Save renderer information to history
         if "renderer" in data.keys():
             self.renderer_history += [data["renderer"]]
+        # Save first observation
+        if not self.first_observation:
+            self.first_observation = data
 
         # Push new observation to observation history
         obs_row = data["external"]
@@ -140,11 +146,15 @@ class RollingEpisodicObserver(Observer):
         self.renderer_history = []
         self.history.reset()
         if not self.feed.has_next():
+            wandb.log(dict(epoch=self.epoch))
+            self.epoch += 1
+            wandb.log(dict(epoch=self.epoch))
             self.feed.reset()
 
         self.warmup()
         self.stop = False
         self.end_dt = None
+        self.first_observation = None
 
 
 class FlipFlopObserver(Observer):
