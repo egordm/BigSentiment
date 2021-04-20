@@ -28,3 +28,5 @@ tensortrade
 fasttext
 pyarrow
 datasets==1.4.1
+selenium
+requests
