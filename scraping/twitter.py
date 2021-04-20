@@ -142,14 +142,14 @@ def twitter(query, since, until, depth):
     while since > until:
         logging.debug(f'Scraping Tweets from: {since.strftime(DT_FMT)}')
 
-        # Update the cookies
-        if count % 100 == 0:
-            logging.debug('Updating cookies')
-            headers = retry(update_cookies, 5, 5)
-
         # Range request
         cursor = None
         for i in range(depth):
+            # Update the cookies
+            if count % 100 == 0:
+                logging.debug('Updating cookies')
+                headers = retry(update_cookies, 5, 5)
+
             logging.debug(f'- Scraping depth: {i}')
             data, cursor = retry(lambda: request_content(headers, query, since, cursor=cursor), count=5, delay=1)
 
@@ -158,6 +158,8 @@ def twitter(query, since, until, depth):
             for tweet in tweets:
                 output.update({'_id': tweet['_id']}, tweet, upsert=True)
 
-        # Update counters
-        count += 1
+            # Update counters
+            count += 1
+
+        # Update day
         since = since - dt.timedelta(days=1)
