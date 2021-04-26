@@ -1,4 +1,6 @@
 import json
+from dataclasses import dataclass
+
 import click
 import pymongo
 import requests
@@ -53,18 +55,20 @@ URL = (
 CURSOR_RE = re.compile('"(scroll:[^"]*)"')
 
 
-def retry(fn, count=5, delay=1):
+def retry(fn, count=5, delay=1, cb=None):
     ex = None
     for i in range(count):
         try:
             return fn()
         except Exception as e:
             time.sleep(delay)
+            if cb: cb()
             ex = e
     raise ex
 
 
-def update_cookies():
+def update_cookies(state):
+    driver.delete_all_cookies()
     driver.get('https://twitter.com/explore')
 
     # Update cookies
@@ -75,16 +79,15 @@ def update_cookies():
     # Update headers
     guest_token = driver.get_cookie('gt')['value']
     # csrf_token = driver.get_cookie('ct0')['value']
-    headers = {
+    state.headers = {
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
         'x-guest-token': guest_token,
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0'
         # 'x-csrf-token': csrf_token,
     }
 
-    return headers
 
-
-def request_content(headers, query: str, date: dt.datetime, cursor=None):
+def request_content(state, query: str, date: dt.datetime, cursor=None):
     if cursor:
         url = URL + '&cursor={cursor}'
         url = url.format(query=u.quote(query), cursor=u.quote(cursor))
@@ -94,7 +97,7 @@ def request_content(headers, query: str, date: dt.datetime, cursor=None):
         query = f"'{query}' {retweet_filter} {date_filter}"
         url = URL.format(query=u.quote(query))
 
-    response = session.get(url, headers=headers)
+    response = session.get(url, headers=state.headers)
     data = json.loads(response.text)
     cursor = CURSOR_RE.search(response.text).group(1)
     return data, cursor
@@ -115,6 +118,11 @@ def transform_tweet(tweet):
             for tag in re.findall(r"#(\w*[0-9a-zA-Z]+\w*[0-9a-zA-Z])", tweet['full_text'])
         ]
     }
+
+
+@dataclass
+class State:
+    headers = None
 
 
 @click.command()
@@ -138,7 +146,10 @@ def twitter(query, since, until, depth):
         ('topics', pymongo.ASCENDING)
     ])
 
-    headers, count = None, 0
+    state = State()
+    cookie_update_fn = lambda: retry(lambda: update_cookies(state), 5, 5)
+
+    count = 0
     while since > until:
         logging.debug(f'Scraping Tweets from: {since.strftime(DT_FMT)}')
 
@@ -148,10 +159,18 @@ def twitter(query, since, until, depth):
             # Update the cookies
             if count % 100 == 0:
                 logging.debug('Updating cookies')
-                headers = retry(update_cookies, 5, 5)
+                cookie_update_fn()
 
             logging.debug(f'- Scraping depth: {i}')
-            data, cursor = retry(lambda: request_content(headers, query, since, cursor=cursor), count=5, delay=1)
+            try:
+                data, cursor = retry(
+                    lambda: request_content(state, query, since, cursor=cursor),
+                    cb=cookie_update_fn,
+                    count=5, delay=5
+                )
+            except Exception as e:
+                print(e)
+                break
 
             # Parse the tweets and push them to the database
             tweets = list(map(transform_tweet, data['globalObjects']['tweets'].values()))
