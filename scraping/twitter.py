@@ -10,6 +10,7 @@ import datetime as dt
 import urllib.parse as u
 import logging
 from selenium import webdriver
+from tqdm import tqdm
 
 from config import mongodb
 
@@ -151,19 +152,19 @@ def twitter(query, since, until, depth):
     state = State()
     cookie_update_fn = lambda: retry(lambda: update_cookies(state), 5, 5)
 
+    p1 = tqdm(total=(until - since).days)
     count = 0
     while since > until:
         logging.debug(f'Scraping Tweets from: {since.strftime(DT_FMT)}')
 
         # Range request
         cursor = None
-        for i in range(depth):
+        for i in tqdm(range(depth), leave=False, postfix={'date': since.strftime(DT_FMT)}):
             # Update the cookies
             if count % 100 == 0:
                 logging.debug('Updating cookies')
                 cookie_update_fn()
 
-            logging.debug(f'- Scraping depth: {i}')
             try:
                 data, cursor = retry(
                     lambda: request_content(state, query, since, cursor=cursor),
@@ -184,3 +185,4 @@ def twitter(query, since, until, depth):
 
         # Update day
         since = since - dt.timedelta(days=1)
+        p1.update(1)
