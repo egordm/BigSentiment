@@ -80,10 +80,12 @@ def update_cookies(state):
     guest_token = driver.get_cookie('gt')['value']
     # csrf_token = driver.get_cookie('ct0')['value']
     state.headers = {
+        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0',
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
         'x-guest-token': guest_token,
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0'
         # 'x-csrf-token': csrf_token,
+        'x-twitter-active-user': 'yes',
+        'x-twitter-client-language': 'en',
     }
 
 
