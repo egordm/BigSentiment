@@ -28,7 +28,7 @@ TIMEFRAMES = {
     '7d': DAY * 7,
     '14d': DAY * 14,
 }
-OUTPUT_PATH = '../data/bitcoin_twitter_labeled/'
+OUTPUT_PATH = '../data/bitcoin_twitter_test_labeled/'
 
 # %%
 
@@ -37,7 +37,7 @@ collection = client['market']['coinmarketcap']
 
 # %%
 ensure_dataset(OUTPUT_PATH, delete=True)
-files = pathlib.Path("../data/bitcoin_twitter_processed/").glob("part_*.parquet")
+files = pathlib.Path("../data/bitcoin_twitter_test_processed/").glob("part_*.parquet")
 for chunk, file in enumerate(files):
     data = pd.read_parquet(file)
     datasets = [data[['_id', 'text', 'follower_count', 'retweet_count', 'created_at']]]

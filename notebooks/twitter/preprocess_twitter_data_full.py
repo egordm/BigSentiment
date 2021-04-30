@@ -25,7 +25,7 @@ pd.options.display.max_colwidth = 200
 offset = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-OUTPUT_PATH = os.path.join(ROOT_DIR, 'data/bitcoin_twitter_processed')
+OUTPUT_PATH = os.path.join(ROOT_DIR, 'data/bitcoin_twitter_test_processed')
 HELPER_PATH = os.path.join(ROOT_DIR, 'data/helpers')
 LOCAL_TEST = True  ## Local test - for test performance on part of the train set only
 verbose = True
@@ -95,13 +95,10 @@ helper_custom_general_synonyms = load_helper_file('helper_custom_general_synonym
 emoji_dict = set(e for lang in emoji.UNICODE_EMOJI.values() for e in lang)
 
 ## Load Data
-files = pathlib.Path(os.path.join(ROOT_DIR, 'data/bitcoin_twitter_raw')).glob("part_*.parquet")
+files = pathlib.Path(os.path.join(ROOT_DIR, 'data/bitcoin_twitter_test_raw')).glob("part_*.parquet")
 for chunk, file in enumerate(files):
     if chunk < offset:
         continue
-
-    if chunk > 0:
-        break
 
     data = pd.read_parquet(file)
 

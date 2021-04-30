@@ -1,6 +1,7 @@
 /*.*
 !/*.dvc
 /bitcoin_twitter_raw
+/bitcoin_twitter_test_raw
 /bitcoin_twitter_processed
 /bitcoin_twitter_labeled
 /bitcoin_twitter_labeled_normalized
@@ -11,3 +12,4 @@
 embeddings
 /sentiment_dataset
 /market
+/sentiment_results

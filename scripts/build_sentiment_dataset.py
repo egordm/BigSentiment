@@ -58,15 +58,14 @@ tokenizer.add_special_tokens({
 })
 
 # Preprocess the initial data
-OUTPUT_PATH = "../data/bitcoin_twitter_labeled_normalized_tokenized/"
+OUTPUT_PATH = "../data/bitcoin_twitter_test_labeled_normalized_tokenized/"
 ensure_dataset(OUTPUT_PATH, delete=False)
-files = pathlib.Path("../data/bitcoin_twitter_labeled_normalized/").glob("part_*.parquet")
+files = pathlib.Path("../data/bitcoin_twitter_test_labeled_normalized/").glob("part_*.parquet")
 for chunk, file in enumerate(files):
     print(f'Processing {chunk}')
     df = pd.read_parquet(file)
     features = [str(f) for f in df.columns if f.startswith('feat')]
     print(features)
-    exit(1)
     df['text'] = df['text'].map(process_text)
     df['input_ids'] = df['text'].map(lambda text: tokenizer.encode(text))
     df['labels'] = df.apply(lambda x: list(x[features].to_numpy()), axis=1)
@@ -81,6 +80,11 @@ dataset = load_dataset(
 )
 # Shuffle the dataset thoroughly
 dataset = dataset.shuffle(seed=42)
+
+ensure_dataset('../data/sentiment_dataset_test')
+df = dataset['train'].to_parquet('../data/sentiment_dataset/test2', 4)
+exit()
+
 # Split off the training dataset
 train_test_dataset = dataset['train'].train_test_split(test_size=0.1)
 # Split off the validation and test datasets
@@ -91,10 +95,10 @@ train_test_valid_dataset = DatasetDict({
     'test': test_validate_dataset['test'],
     'valid': test_validate_dataset['train']
 })
-ensure_dataset('../data/sentiment_dataset')
+ensure_dataset('../data/sentiment_dataset_test')
 PARTITONS = [12, 2, 2]
 for n_partitons, (k, v) in zip(PARTITONS, train_test_valid_dataset.items()):
-    path = os.path.join('../data/sentiment_dataset', f'{k}')
+    path = os.path.join('../data/sentiment_dataset_test', f'{k}')
     os.makedirs(path, exist_ok=True)
     print(f'Processing: {k}')
     df = v.to_parquet(path, n_partitons)
