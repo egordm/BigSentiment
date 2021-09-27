@@ -1,5 +1,7 @@
-# BigHead
-Sentiment data extraction and collection pipeline targeted but not limited to cryptocurrency markets.
+# BigSentiment
+Sentiment data extraction and collection pipeline targeted but not limited to cryptocurrency markets. 
+The toolset provides various scripts to pull real data from sources such as twitter, coindesk, cointelegraph and other news sites. 
+Addionally it provides a pipeline for cleaning, processing and sentiment extraction from the pulled documents.
 
 ## Data Collection Usage
 Requirements:
